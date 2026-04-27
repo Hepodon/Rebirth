@@ -1,6 +1,5 @@
 #include "lvgl_Customs.hpp"
 #include "autons.hpp"
-#include "graphics.hpp"
 #include "liblvgl/core/lv_obj.h"
 #include "liblvgl/core/lv_obj_pos.h"
 #include "liblvgl/core/lv_obj_style_gen.h"

@@ -3,7 +3,12 @@
 #include "lemlib/chassis/trackingWheel.hpp"
 #include "main.h"
 
-extern float motorPorts[8][4];
+struct Motors {
+  std::string name;
+  float port[4];
+};
+
+extern Motors motors[8];
 
 extern pros::MotorGroup aleft;
 extern pros::MotorGroup aright;

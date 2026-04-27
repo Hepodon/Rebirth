@@ -1,7 +1,9 @@
+#include "portDef.hpp"
 #include "lemlib/chassis/chassis.hpp"
 #include "lemlib/chassis/trackingWheel.hpp"
 #include "lemlib/exitcondition.hpp"
 #include "main.h"
+#include <array>
 #include <vector>
 
 using namespace pros;
@@ -10,19 +12,11 @@ const std::vector<std::int8_t> rightDTPorts{1, 1, 1};
 
 const std::vector<std::int8_t> leftDTPorts{1, 1, 1};
 
-float leftDT[sizeof(leftDTPorts) / sizeof(leftDTPorts[0])][4] = {
-    {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};
-
-float rightDT[sizeof(rightDTPorts) / sizeof(rightDTPorts[0])][4] = {
-    {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};
-
-struct otherMotors {
-  std::string name;
-  float port[4];
-};
-
-otherMotors motors[2]{{"left-Middle", {0, 0, 0, 0}},
-                      {"right-Middle", {0, 0, 0, 0}}};
+Motors motors[8]{
+    {"left-Middle", {0, 0, 0, 0}},    {"right-Middle", {0, 0, 0, 0}},
+    {"DT-leftFront", {0, 0, 0, 0}},   {"DT-leftBottom", {0, 0, 0, 0}},
+    {"DT-leftTop", {0, 0, 0, 0}},     {"DT-rightFront", {0, 0, 0, 0}},
+    {"DT-rightBottom", {0, 0, 0, 0}}, {"DT-rightTop", {0, 0, 0, 0}}};
 
 MotorGroup aleft(leftDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 MotorGroup aright(rightDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
@@ -32,8 +26,8 @@ Motor rightMiddle(motors[1].port[0]);
 
 adi::Pneumatics match('a', false);
 adi::Pneumatics arm('h', false);
-pros::adi::Pneumatics tripstate('b', false);
-pros::adi::Pneumatics tripstate2('e', false);
+adi::Pneumatics tripstate('b', false);
+adi::Pneumatics tripstate2('e', false);
 
 Distance Dleft(0);
 Distance Dright(0);

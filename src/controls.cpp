@@ -1,4 +1,5 @@
 #include "controls.hpp"
+#include "main.h"
 #include "portDef.hpp"
 #include "pros/misc.h"
 #include "pros/misc.hpp"
