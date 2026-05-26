@@ -8,25 +8,21 @@
 
 using namespace pros;
 
-const std::vector<std::int8_t> rightDTPorts{18, 19};
+const std::vector<std::int8_t> rightDTPorts{};
 
-const std::vector<std::int8_t> leftDTPorts{-1, -11};
+const std::vector<std::int8_t> leftDTPorts{};
 
 Motors motors[6]{
-    {"Claw", {10, 0, 0, 0}, 200},         {"Cascade", {-9, 0, 0, 0}, 200},
-    {"DT-leftFront", {-1, 0, 0, 0}, 200}, {"DT-rightFront", {18, 0, 0, 0}, 200},
-    {"DT-leftBack", {-11, 0, 0, 0}, 200}, {"DT-rightBack", {19, 0, 0, 0}, 200}};
+    {"DT-leftMini", {0, 0, 0, 0}, 200},  {"DT-rightMini", {0, 0, 0, 0}, 200},
+    {"DT-leftFront", {0, 0, 0, 0}, 600}, {"DT-rightFront", {0, 0, 0, 0}, 600},
+    {"DT-leftBack", {0, 0, 0, 0}, 600},  {"DT-rightBack", {0, 0, 0, 0}, 600}};
 
 MotorGroup aleft(leftDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 MotorGroup aright(rightDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 
-Motor claw(motors[0].port[0]);
-Motor cascade(motors[1].port[0]);
-
-Distance dFront(0);
-Distance dClaw(0);
-
 Rotation vertRotation(0);
+
+Rotation horRotation(0);
 
 v5::Optical colorSensor(0);
 
@@ -34,11 +30,14 @@ lemlib::Drivetrain DT(&aleft, &aright, 12.72, lemlib::Omniwheel::NEW_325, 450,
                       8);
 
 IMU inertial1(0);
+IMU inertial2(0);
 
 lemlib::TrackingWheel leftVert(&vertRotation, lemlib::Omniwheel::NEW_2, 0.0, 1);
 
-lemlib::OdomSensors sensors(&leftVert, nullptr, nullptr, nullptr, &inertial1);
-// lateral PID controller
+lemlib::TrackingWheel leftVHor(&horRotation, lemlib::Omniwheel::NEW_2, 0.0, 1);
+
+lemlib::OdomSensors sensors(&leftVert, nullptr, &leftVHor, nullptr, &inertial1);
+
 lemlib::ControllerSettings
     lateral_controller(5,   // proportional gain (kP)
                        0,   // integral gain (kI)
@@ -51,7 +50,6 @@ lemlib::ControllerSettings
                        20   // maximum acceleration (slew)
     );
 
-// angular PID controller
 lemlib::ControllerSettings
     angular_controller(2.45, // proportional gain (kP)
                        0,    // integral gain (kI)

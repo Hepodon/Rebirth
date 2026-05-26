@@ -15,12 +15,6 @@ extern Motors motors[6];
 extern pros::MotorGroup aleft;
 extern pros::MotorGroup aright;
 
-extern pros::Motor claw;
-extern pros::Motor cascade;
-
-extern pros::Distance dFront;
-extern pros::Distance dClaw;
-
 extern pros::Rotation vertRotation;
 
 extern pros::v5::Optical colorSensor;
@@ -28,15 +22,14 @@ extern pros::v5::Optical colorSensor;
 extern lemlib::Drivetrain DT;
 
 extern pros::IMU inertial1;
+extern pros::IMU inertial2;
 
 extern lemlib::TrackingWheel leftVert;
 
 extern lemlib::OdomSensors sensors;
 
-// lateral PID controller
 extern lemlib::ControllerSettings lateral_controller;
 
-// angular PID controller
 extern lemlib::ControllerSettings angular_controller;
 
 extern lemlib::Chassis chassis;
