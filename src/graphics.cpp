@@ -1,5 +1,6 @@
 #include "graphics.hpp"
 #include "autons.hpp"
+#include "liblvgl/core/lv_obj.h"
 #include "liblvgl/core/lv_obj_style_gen.h"
 #include "liblvgl/display/lv_display.h"
 #include "liblvgl/lvgl.h"
@@ -12,8 +13,10 @@
 #include "pros/motors.h"
 #include <exception>
 
+
+
 // Defualt bg Color
-lv_color_t bg_color = {lv_palette_main(LV_PALETTE_BLUE_GREY)};
+lv_color_t bg_color;
 
 lv_obj_t *startScreen;
 
@@ -44,6 +47,11 @@ lv_obj_t *torqueScreen;
 lv_obj_t *speedScreen;
 lv_obj_t *headingScreen;
 
+namespace heading {
+lv_obj_t *headingChart;
+Chartseries headingStru;
+} // namespace heading
+
 void loadStartScreen(lv_event_t *e);
 void loadAutonScreen(lv_event_t *e);
 void loadDiagScreen(lv_event_t *e);
@@ -66,6 +74,8 @@ std::vector<NavItem> navItems = {{"Temp", loadTempScreen},
                                  {"Torque", loadTorqueScreen},
                                  {"Speed", loadSpeedScreen},
                                  {"Heading", loadHeadingScreen}};
+
+lv_obj_t *diagArcs[sizeof(motors) / sizeof(motors[0])];
 
 lv_obj_t *navContainer = nullptr;
 
@@ -157,6 +167,20 @@ pros::Task masterUpdater([] {
   }
 });
 
+pros::Task lvglUpdater([] {
+  while (true) {
+    for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++) {
+      if (currentScreen == TEMP) {
+        lv_arc_set_value(diagArcs[i], motors[i].port[1]);
+      } else if (currentScreen == TORQUE) {
+        lv_arc_set_value(diagArcs[i], motors[i].port[2]);
+      } else if (currentScreen == SPEED) {
+        lv_arc_set_value(diagArcs[i], motors[i].port[3]);
+      }
+    }
+  }
+});
+
 void loadStartScreen(lv_event_t *e) {
   currentScreen = START;
   lv_screen_load_anim(startScreen, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 500, 150,
@@ -197,7 +221,63 @@ void loadDiagScreen(lv_event_t *e) {
   lv_screen_load_anim(diagScreen, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 250, false);
 }
 
-void screenInit() {
+void loadTempScreen(lv_event_t *e) {
+  if (currentScreen == HEADING) {
+    for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++) {
+      lv_obj_remove_flag(diagArcs[1], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  createNavBar(tempScreen);
+  for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++) {
+    diagArcs[i] = createLVGLArc(tempScreen, 20, 62, i, motors[i].name);
+  }
+  lv_screen_load(tempScreen);
+  currentScreen = TEMP;
+}
+
+void loadTorqueScreen(lv_event_t *e) {
+  if (currentScreen == HEADING) {
+    for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++) {
+      lv_obj_remove_flag(diagArcs[1], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  createNavBar(torqueScreen);
+  for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++) {
+    diagArcs[i] = createLVGLArc(torqueScreen, 0, 100, i, motors[i].name);
+  }
+  lv_screen_load(torqueScreen);
+  currentScreen = TORQUE;
+}
+
+void loadSpeedScreen(lv_event_t *e) {
+  if (currentScreen == HEADING) {
+    for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++) {
+      lv_obj_remove_flag(diagArcs[1], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  createNavBar(speedScreen);
+  for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++) {
+    diagArcs[i] =
+        createLVGLArc(speedScreen, 0, motors[i].RPM, i, motors[i].name);
+  }
+  lv_screen_load(speedScreen);
+  currentScreen = SPEED;
+}
+
+void loadHeadingScreen(lv_event_t *e) {
+  createNavBar(speedScreen);
+  for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++) {
+    lv_obj_add_flag(diagArcs[1], LV_OBJ_FLAG_HIDDEN);
+  }
+
+  heading::headingChart =
+      createLVGLChart(heading::headingStru, headingScreen, -180, 180);
+
+  lv_screen_load(headingScreen);
+  currentScreen = HEADING;
+}
+
+void screen_init() {
   startScreen = lv_obj_create(NULL);
   autonScreen = lv_obj_create(NULL);
   diagScreen = lv_obj_create(NULL);

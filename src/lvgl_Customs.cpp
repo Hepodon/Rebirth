@@ -8,6 +8,7 @@
 #include "liblvgl/lvgl.h"
 #include "liblvgl/misc/lv_area.h"
 #include "liblvgl/misc/lv_palette.h"
+#include "liblvgl/widgets/arc/lv_arc.h"
 #include "liblvgl/widgets/chart/lv_chart.h"
 #include "portDef.hpp"
 #include "pros/screen.hpp"
@@ -50,13 +51,14 @@ lv_obj_t *createLVGLText(lv_obj_t *parent, const char *text, lv_align_t align,
   return textBox;
 }
 
-lv_obj_t *createLVGLChart(Chartseries &stru, lv_obj_t *parent) {
+lv_obj_t *createLVGLChart(Chartseries &stru, lv_obj_t *parent, int min,
+                          int max) {
   lv_obj_t *chart = lv_chart_create(parent);
   lv_chart_series_t *headingSeries;
 
   lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
 
-  lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, -180, 180);
+  lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, min, max);
 
   lv_chart_set_update_mode(chart, LV_CHART_UPDATE_MODE_SHIFT);
 
@@ -70,4 +72,29 @@ lv_obj_t *createLVGLChart(Chartseries &stru, lv_obj_t *parent) {
   stru = {chart, headingSeries};
 
   return chart;
+}
+
+lv_obj_t *createLVGLArc(lv_obj_t *parent, int min, int max, int i,
+                        std::string namer) {
+  lv_obj_t *arc = lv_arc_create(parent);
+  lv_obj_set_size(arc, 90, 90);
+  lv_arc_set_rotation(arc, 180);
+  lv_arc_set_range(arc, min, max);
+  lv_arc_set_bg_angles(arc, 30, 150);
+  lv_arc_set_value(arc, i * 11);
+  lv_obj_remove_style(arc, NULL, LV_PART_KNOB);
+  lv_obj_remove_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+  if (i < 5) {
+    lv_obj_align(arc, LV_ALIGN_BOTTOM_LEFT, 4 + (96 * i), -(242 / 2) + 15);
+  } else if (i < 10) {
+    lv_obj_align(arc, LV_ALIGN_BOTTOM_LEFT, 4 + (96 * (i - 5)), -15);
+  }
+
+  lv_obj_t *label = lv_label_create(arc);
+  lv_label_set_text_fmt(label, "Port: %d", static_cast<int>(motors[i].port[0]));
+  lv_obj_center(label);
+  lv_obj_t *name = lv_label_create(arc);
+  lv_label_set_text_fmt(name, "%s", namer.c_str());
+  lv_obj_align(name, LV_ALIGN_CENTER, 0, 15);
+  return arc;
 }

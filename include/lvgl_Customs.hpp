@@ -1,4 +1,6 @@
 #pragma once
+#include "autons.hpp"
+#include "graphics.hpp"
 #include "liblvgl/core/lv_obj.h"
 #include "liblvgl/core/lv_obj_pos.h"
 #include "liblvgl/core/lv_obj_style_gen.h"
@@ -15,19 +17,19 @@
 
 struct Chartseries {
   lv_obj_t *chart;
-  lv_chart_series_t *headingSeries;
-};
-struct customChart {
-  lv_obj_t *chart;
-  lv_chart_series_t *series;
+  lv_chart_series_t *sSeries;
 };
 
 extern lv_obj_t *createLvglButton(lv_obj_t *parent, const char *text,
                                   lv_event_cb_t event_cb, int width, int height,
                                   lv_align_t align, int x_ofs, int y_ofs,
-                                  lv_palette_t color = LV_PALETTE_LIGHT_BLUE,
+                                  lv_palette_t color = LV_PALETTE_PURPLE,
                                   int radius = 20);
 extern lv_obj_t *createLVGLText(lv_obj_t *parent, const char *text,
                                 lv_align_t align, int x_ofs, int y_ofs);
 
-extern lv_obj_t *createLVGLChart(Chartseries &stru, lv_obj_t *parent);
+extern lv_obj_t *createLVGLChart(Chartseries &stru, lv_obj_t *parent, int min,
+                                 int max);
+
+extern lv_obj_t *createLVGLArc(lv_obj_t *parent, int min, int max, int i,
+                               std::string namer);

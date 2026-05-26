@@ -6,30 +6,24 @@
 struct Motors {
   std::string name;
   float port[4];
+  int RPM;
+  bool DT = false;
 };
 
-extern Motors motors[8];
+extern Motors motors[6];
 
 extern pros::MotorGroup aleft;
 extern pros::MotorGroup aright;
 
-extern pros::MotorGroup middle;
+extern pros::Motor claw;
+extern pros::Motor cascade;
 
-extern pros::adi::Pneumatics match;
-extern pros::adi::Pneumatics arm;
-extern pros::adi::Pneumatics tripstate;
-extern pros::adi::Pneumatics tripstate2;
-
-extern pros::Distance Dleft;
-extern pros::Distance Dright;
-extern pros::Distance Dfront;
-extern pros::Distance DbackR;
-extern pros::Distance DbackL;
+extern pros::Distance dFront;
+extern pros::Distance dClaw;
 
 extern pros::Rotation vertRotation;
 
-extern pros::v5::Optical colorSensorMatch;
-extern pros::v5::Optical colorSensorScore;
+extern pros::v5::Optical colorSensor;
 
 extern lemlib::Drivetrain DT;
 

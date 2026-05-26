@@ -48,7 +48,6 @@ void buttonFunction(pros::controller_digital_e_t button) {
   case pros::E_CONTROLLER_DIGITAL_Y:
     break;
   case pros::E_CONTROLLER_DIGITAL_POWER:
-    userInput.rumble("---___---");
     break;
   }
 }

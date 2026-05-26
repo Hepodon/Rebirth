@@ -8,42 +8,32 @@
 
 using namespace pros;
 
-const std::vector<std::int8_t> rightDTPorts{1, 1, 1};
+const std::vector<std::int8_t> rightDTPorts{18, 19};
 
-const std::vector<std::int8_t> leftDTPorts{1, 1, 1};
+const std::vector<std::int8_t> leftDTPorts{-1, -11};
 
-Motors motors[8]{
-    {"left-Middle", {0, 0, 0, 0}},    {"right-Middle", {0, 0, 0, 0}},
-    {"DT-leftFront", {0, 0, 0, 0}},   {"DT-leftBottom", {0, 0, 0, 0}},
-    {"DT-leftTop", {0, 0, 0, 0}},     {"DT-rightFront", {0, 0, 0, 0}},
-    {"DT-rightBottom", {0, 0, 0, 0}}, {"DT-rightTop", {0, 0, 0, 0}}};
+Motors motors[6]{
+    {"Claw", {10, 0, 0, 0}, 200},         {"Cascade", {-9, 0, 0, 0}, 200},
+    {"DT-leftFront", {-1, 0, 0, 0}, 200}, {"DT-rightFront", {18, 0, 0, 0}, 200},
+    {"DT-leftBack", {-11, 0, 0, 0}, 200}, {"DT-rightBack", {19, 0, 0, 0}, 200}};
 
 MotorGroup aleft(leftDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 MotorGroup aright(rightDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 
-Motor leftMiddle(motors[0].port[0]);
-Motor rightMiddle(motors[1].port[0]);
+Motor claw(motors[0].port[0]);
+Motor cascade(motors[1].port[0]);
 
-adi::Pneumatics match('a', false);
-adi::Pneumatics arm('h', false);
-adi::Pneumatics tripstate('b', false);
-adi::Pneumatics tripstate2('e', false);
+Distance dFront(0);
+Distance dClaw(0);
 
-Distance Dleft(0);
-Distance Dright(0);
-Distance Dfront(0);
-Distance DbackR(0);
-Distance DbackL(0);
+Rotation vertRotation(0);
 
-Rotation vertRotation(-16);
-
-v5::Optical colorSensorMatch(0);
-v5::Optical colorSensorScore(0);
+v5::Optical colorSensor(0);
 
 lemlib::Drivetrain DT(&aleft, &aright, 12.72, lemlib::Omniwheel::NEW_325, 450,
                       8);
 
-IMU inertial1(1);
+IMU inertial1(0);
 
 lemlib::TrackingWheel leftVert(&vertRotation, lemlib::Omniwheel::NEW_2, 0.0, 1);
 
