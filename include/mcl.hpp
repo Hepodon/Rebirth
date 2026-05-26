@@ -100,7 +100,8 @@ public:
   auto operator<=>(Rotation other) const { return rad_ <=> other.rad_; }
 
   explicit operator float() const { return rad_; }
-}; // namespace ad
+};
+
 inline Rotation operator*(float scalar, Rotation rot) { return rot * scalar; }
 
 constexpr Rotation deg(float degrees) {
@@ -336,10 +337,112 @@ template <size_t N> struct MCL {
     std::fill(presample_weights, presample_weights + N, 0.0f);
   }
 
-  void init(float x, float y, float spread);
-  void predict(float dx, float dy, float std_dev);
-  void update(const std::vector<Reading> &readings);
-  Point estimate() const;
-  void resample();
+  // Scatter particles around (x, y) with Gaussian spread
+  void init(float x, float y, float spread) {
+    for (size_t i = 0; i < N; ++i) {
+      particle_x[i] = x + rng.gaussian(spread);
+      particle_y[i] = y + rng.gaussian(spread);
+      // Clamp to field bounds
+      particle_x[i] = std::clamp(particle_x[i], FIELD_MIN, FIELD_MAX);
+      particle_y[i] = std::clamp(particle_y[i], FIELD_MIN, FIELD_MAX);
+      particle_weights[i] = 1.0f / N;
+    }
+  }
+
+  // Move all particles by (dx, dy) with Gaussian noise
+  void predict(float dx, float dy, float std_dev) {
+    for (size_t i = 0; i < N; ++i) {
+      particle_x[i] += dx + rng.gaussian(std_dev);
+      particle_y[i] += dy + rng.gaussian(std_dev);
+      // Clamp to field bounds
+      particle_x[i] = std::clamp(particle_x[i], FIELD_MIN, FIELD_MAX);
+      particle_y[i] = std::clamp(particle_y[i], FIELD_MIN, FIELD_MAX);
+    }
+  }
+
+  // Weight particles by how well they explain the sensor readings
+  void update(const std::vector<Reading> &readings) {
+    if (readings.empty())
+      return;
+
+    for (size_t i = 0; i < N; ++i) {
+      Point pos{particle_x[i], particle_y[i]};
+      float log_weight = 0.0f;
+
+      for (const auto &r : readings) {
+        auto predicted = r.predict(pos);
+        if (!predicted.has_value()) {
+          // Particle is in a position where the ray never hits a wall —
+          // heavily penalise it
+          log_weight += r.inv_var * (FIELD_SIZE * FIELD_SIZE);
+          continue;
+        }
+        float diff = *predicted - r.recorded;
+        // inv_var is already -0.5 / sigma^2, so this gives the log-likelihood
+        log_weight += r.inv_var * (diff * diff);
+      }
+
+      // Multiply the existing weight by exp(log_weight).
+      // Work in log-space to avoid underflow, then convert back.
+      particle_weights[i] *= std::exp(log_weight);
+    }
+
+    // Normalise weights so they sum to 1
+    float total = 0.0f;
+    for (size_t i = 0; i < N; ++i)
+      total += particle_weights[i];
+
+    if (total < 1e-12f) {
+      // All weights collapsed — reset to uniform to survive
+      std::fill(particle_weights, particle_weights + N, 1.0f / N);
+      return;
+    }
+
+    float inv_total = 1.0f / total;
+    for (size_t i = 0; i < N; ++i)
+      particle_weights[i] *= inv_total;
+  }
+
+  // Weighted mean position of all particles
+  Point estimate() const {
+    float ex = 0.0f, ey = 0.0f;
+    for (size_t i = 0; i < N; ++i) {
+      ex += particle_x[i] * particle_weights[i];
+      ey += particle_y[i] * particle_weights[i];
+    }
+    return {ex, ey};
+  }
+
+  // Low-variance (systematic) resampler
+  void resample() {
+    // Save current particles into presample buffers
+    std::copy(particle_x, particle_x + N, presample_x);
+    std::copy(particle_y, particle_y + N, presample_y);
+    std::copy(particle_weights, particle_weights + N, presample_weights);
+
+    // Build a cumulative sum of weights
+    // We walk through it with N evenly-spaced pointers (systematic resampling)
+    float step = 1.0f / N;
+    float r = rng.next_f32() * step; // random start in [0, step)
+
+    float cumulative = presample_weights[0];
+    size_t j = 0;
+
+    for (size_t i = 0; i < N; ++i) {
+      float target = r + i * step;
+      while (target > cumulative && j < N - 1) {
+        ++j;
+        cumulative += presample_weights[j];
+      }
+      temp_x[i] = presample_x[j];
+      temp_y[i] = presample_y[j];
+      temp_weights[i] = step; // reset to uniform after resampling
+    }
+
+    std::copy(temp_x, temp_x + N, particle_x);
+    std::copy(temp_y, temp_y + N, particle_y);
+    std::copy(temp_weights, temp_weights + N, particle_weights);
+  }
 };
+
 } // namespace ad
