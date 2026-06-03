@@ -8,14 +8,14 @@
 
 using namespace pros;
 
-const std::vector<std::int8_t> rightDTPorts{};
+const std::vector<std::int8_t> rightDTPorts{8, 9, -11};
 
-const std::vector<std::int8_t> leftDTPorts{};
+const std::vector<std::int8_t> leftDTPorts{-1, -2, 3};
 
 Motors motors[6]{
-    {"DT-leftMini", {0, 0, 0, 0}, 200},  {"DT-rightMini", {0, 0, 0, 0}, 200},
-    {"DT-leftFront", {0, 0, 0, 0}, 600}, {"DT-rightFront", {0, 0, 0, 0}, 600},
-    {"DT-leftBack", {0, 0, 0, 0}, 600},  {"DT-rightBack", {0, 0, 0, 0}, 600}};
+    {"DT-leftMini", {3, 0, 0, 0}, 200},  {"DT-rightMini", {11, 0, 0, 0}, 200},
+    {"DT-leftFront", {1, 0, 0, 0}, 600}, {"DT-rightFront", {8, 0, 0, 0}, 600},
+    {"DT-leftBack", {2, 0, 0, 0}, 600},  {"DT-rightBack", {9, 0, 0, 0}, 600}};
 
 MotorGroup aleft(leftDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 MotorGroup aright(rightDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
