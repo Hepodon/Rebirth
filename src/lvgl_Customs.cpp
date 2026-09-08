@@ -14,6 +14,8 @@
 #include "pros/screen.hpp"
 #include <cstring>
 
+
+
 lv_obj_t *createLvglButton(lv_obj_t *parent, const char *text,
                            lv_event_cb_t event_cb, int width, int height,
                            lv_align_t align, int x_ofs, int y_ofs,
@@ -46,7 +48,9 @@ lv_obj_t *createLVGLText(lv_obj_t *parent, const char *text, lv_align_t align,
   lv_obj_t *textBox = lv_label_create(parent);
 
   lv_obj_align(textBox, align, x_ofs, y_ofs);
-  lv_label_set_text(textBox, text);
+    lv_label_set_text(textBox, text);
+
+    lv_obj_set_style_text_font(textBox, &lv_font_montserrat_24, 0);
 
   return textBox;
 }
