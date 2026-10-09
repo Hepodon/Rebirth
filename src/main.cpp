@@ -20,7 +20,8 @@ ad::MCL<PARTICLES> mcl;
 ad::Point last_odom_pos{0.0f, 0.0f};
 bool mcl_initialized = false;
 
-void odom() {
+void odom()
+{
 
   auto pose = chassis.getPose();
 
@@ -44,7 +45,8 @@ void odom() {
 
   ad::Position robot_pos{current_odom.x, current_odom.y, heading};
 
-  auto add_sensor = [&](Distance &sensor, ad::Position offset) {
+  auto add_sensor = [&](Distance &sensor, ad::Position offset)
+  {
     auto v = sensor.get();
     if (!v)
       return;
@@ -76,46 +78,68 @@ void odom() {
   mcl.resample();
 }
 
-Task odomTask([] {
+Task odomTask([]
+              {
   while (true) {
     odom();
     delay(10);
-  }
-});
+  } });
 
 float mm_in(float mm) { return mm / 25.4; }
 
-void printer() {
-  // while (true) {
-  //   std::cout << "\rClaw_Height: " << mm_in(dClaw.get())
-  //             << "In, Detected_Dist: " << mm_in(dFront.get())
-  //             << "In, RGB: " << static_cast<int>(colorSensor.get_rgb().red)
-  //             << " R, " << static_cast<int>(colorSensor.get_rgb().blue)
-  //             << " B, " << static_cast<int>(colorSensor.get_rgb().green)
-  //             << " G";
-  //   delay(150);
-  // }
-}
+void initialize()
+{  chassis.calibrate(true);
 
-void initialize() {
-  // Task printingTask(printer);
-  // colorSensor.set_led_pwm(75);
-  chassis.calibrate(false);
   lvgl_init();
   screen_init();
 }
 
 void disabled() {}
 
-void competition_initialize() { chassis.calibrate(true); }
+void competition_initialize() {  }
 
-void autonomous() { chassis.setPose(0, 0, 0); }
-void opcontrol() {
+void autononm(AutonSel AUTON) {
+  switch (AUTON) {
+    case (Blue_L):
+    break;
+    case (Blue_R):
+    break;
+    case (Red_L):
+    break;
+    case (Red_R):
+    break;
+    case (Skills):
+    break; 
+  }
+}
+
+void autonomous() {
+  // while (!aready) {
+  //   delay(20);
+  // }
+  // autononm(selectedAutonomo);
+  chassis.turnToHeading(90, 100000, {.direction = lemlib::AngularDirection::CW_CLOCKWISE});
+  chassis.waitUntilDone();
+  intake.move(80);
+}
+
+void buttonsTask()
+{
+  while (true)
+  {
+    applyButtons(userInput);
+    delay(15);
+  }
+}
+
+void opcontrol()
+{
+  Task ok(buttonsTask);
 
   chassis.setBrakeMode(E_MOTOR_BRAKE_COAST);
 
-  while (true) {
-    applyButtons(userInput);
+  while (true)
+  {
 
     chassis.arcade(userInput.get_analog(ANALOG_LEFT_Y),
                    userInput.get_analog(ANALOG_RIGHT_X), false, 0.40);

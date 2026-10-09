@@ -10,10 +10,17 @@ struct Motors {
   bool DT = false;
 };
 
-extern Motors motors[6];
+extern Motors motors[9];
 
 extern pros::MotorGroup aleft;
 extern pros::MotorGroup aright;
+
+extern pros::Motor intake;
+extern pros::Motor rotate;
+extern pros::Motor shitter;
+
+extern pros::MotorGroup cascade;
+
 
 extern pros::Rotation vertRotation;
 

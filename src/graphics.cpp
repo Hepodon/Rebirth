@@ -20,9 +20,19 @@ lv_obj_t *startScreen;
 lv_obj_t *autonScreen;
 lv_obj_t *diagScreen;
 
+lv_obj_t *map_POS = nullptr;
+
+const uint8_t square_num = 5;
+const uint8_t square_width = 32;
+const uint8_t square_spacing = 2;
+
+lv_obj_t *square[square_num][square_num] = {{nullptr}};
+
 screenStatus currentScreen = START;
 
 static float motorData[sizeof(motors) / sizeof(motors[0])][3];
+
+void clearPrev(screenStatus currentScreen);
 
 namespace start
 {
@@ -37,11 +47,14 @@ namespace start
 
 namespace auton
 {
+  lv_obj_t *redButton;
+  lv_obj_t *blueButton;
   lv_obj_t *backButton;
   lv_obj_t *title;
-  lv_obj_t *leftAutonButton;
-  lv_obj_t *rightAutonButton;
-  lv_obj_t *soloAutonButton;
+  lv_obj_t *L_leftAutonButton;
+  lv_obj_t *L_rightAutonButton;
+  lv_obj_t *R_leftAutonButton;
+  lv_obj_t *R_rightAutonButton;
   lv_obj_t *skillsAutonButton;
 } // namespace auton
 
@@ -59,6 +72,7 @@ void loadTempScreen(lv_event_t *e);
 void loadTorqueScreen(lv_event_t *e);
 void loadSpeedScreen(lv_event_t *e);
 void loadHeadingScreen(lv_event_t *e);
+void loadPositionScreen(lv_event_t *e);
 
 lv_obj_t *backDiagButton;
 
@@ -74,7 +88,8 @@ struct NavItem
 std::vector<NavItem> navItems = {{"Temp", loadTempScreen},
                                  {"Torque", loadTorqueScreen},
                                  {"Speed", loadSpeedScreen},
-                                 {"Heading", loadHeadingScreen}};
+                                 {"Heading", loadHeadingScreen},
+                                 {"Position", loadPositionScreen}};
 
 lv_obj_t *diagArcs[sizeof(motors) / sizeof(motors[0])];
 
@@ -218,6 +233,14 @@ void loadStartScreen(lv_event_t *e)
                       false);
 }
 
+const int auton_Spacing = 4;
+const int auton_Size_x = 112;
+const int auton_Size_y = 45;
+
+bool red;
+void redfun(lv_event_t *e) {red = true;}
+void bluefun(lv_event_t *e) {red = false;}
+
 void loadAutonScreen(lv_event_t *e)
 {
   lv_obj_clean(autonScreen);
@@ -226,24 +249,31 @@ void loadAutonScreen(lv_event_t *e)
   auton::title =
       createLVGLText(autonScreen, "22204N Auton", LV_ALIGN_TOP_MID, 0, 6);
   lv_obj_set_style_text_font(auton::title, &lv_font_montserrat_16, 0);
-
   auton::backButton =
       createLvglButton(autonScreen, "X", loadStartScreen, 40, 40,
                        LV_ALIGN_TOP_LEFT, 14, 14, LV_PALETTE_LIGHT_BLUE, 5);
 
-  auton::leftAutonButton = createLvglButton(
-      autonScreen, "Left Auton", leftAuton, 115, 50, LV_ALIGN_CENTER, -60, 0);
+  auton::L_leftAutonButton = createLvglButton(
+      autonScreen, "B_Left Auton", L_leftAuton, auton_Size_x, auton_Size_y, LV_ALIGN_CENTER, -auton_Spacing - (auton_Size_x / 2), 50 - auton_Spacing - (auton_Size_y / 2));
 
-  auton::rightAutonButton = createLvglButton(
-      autonScreen, "Right Auton", rightAuton, 115, 50, LV_ALIGN_CENTER, 60, 0);
+  auton::L_rightAutonButton = createLvglButton(
+      autonScreen, "B_Right Auton", L_rightAuton, auton_Size_x, auton_Size_y, LV_ALIGN_CENTER, -auton_Spacing - (auton_Size_x / 2), 50 + auton_Spacing + (auton_Size_y / 2));
 
-  auton::soloAutonButton =
-      createLvglButton(autonScreen, "Right Solo Auton", soloRightAuton, 230, 60,
-                       LV_ALIGN_CENTER, 0, -60);
+  auton::R_leftAutonButton = createLvglButton(
+      autonScreen, "R_Left Auton", R_leftAuton, auton_Size_x, auton_Size_y, LV_ALIGN_CENTER, auton_Spacing + (auton_Size_x / 2), 50 + auton_Spacing + (auton_Size_y / 2));
 
-  auton::skillsAutonButton =
-      createLvglButton(autonScreen, "Skills Auton", skillsAuton, 230, 60,
-                       LV_ALIGN_CENTER, 0, 60);
+  auton::R_rightAutonButton = createLvglButton(
+      autonScreen, "R_Right Auton", R_rightAuton, auton_Size_x, auton_Size_y, LV_ALIGN_CENTER, auton_Spacing + (auton_Size_x / 2), 50 - auton_Spacing - (auton_Size_y / 2));
+
+  // auton::redButton = createLvglButton(
+  //     autonScreen, nullptr, redfun, auton_Size_x, (auton_Size_y * 2)-10, LV_ALIGN_CENTER, -auton_Spacing - (auton_Size_x / 2), -(auton_Spacing * 2) - (auton_Size_y), LV_PALETTE_RED);
+
+  // auton::blueButton = createLvglButton(
+  //     autonScreen, nullptr, bluefun, auton_Size_x, (auton_Size_y * 2)-10, LV_ALIGN_CENTER, auton_Spacing + (auton_Size_x / 2), -(auton_Spacing * 2) - (auton_Size_y), LV_PALETTE_BLUE);
+
+  // auton::skillsAutonButton =
+  //     createLvglButton(autonScreen, "Skills Auton", skillsAuton, 230, 60,
+  //                      LV_ALIGN_CENTER, 0, 60);
 
   lv_screen_load_anim(autonScreen, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 150, false);
 }
@@ -263,20 +293,12 @@ void loadDiagScreen(lv_event_t *e)
 
   startUpdaterTasks();
   loadTempScreen(nullptr);
-  lv_screen_load(diagScreen);
+  lv_screen_load_anim(diagScreen, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 150, false);
 }
 
 void loadTempScreen(lv_event_t *e)
 {
-  if (heading::headingChart != nullptr)
-  {
-    lv_obj_add_flag(heading::headingChart, LV_OBJ_FLAG_HIDDEN);
-  }
-
-  if (heading::headingTimer != nullptr)
-  {
-    lv_timer_pause(heading::headingTimer);
-  }
+  clearPrev(TEMP);
 
   for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++)
   {
@@ -289,14 +311,8 @@ void loadTempScreen(lv_event_t *e)
 }
 void loadTorqueScreen(lv_event_t *e)
 {
-  if (heading::headingChart != nullptr)
-  {
-    lv_obj_add_flag(heading::headingChart, LV_OBJ_FLAG_HIDDEN);
-  }
-  if (heading::headingTimer != nullptr)
-  {
-    lv_timer_pause(heading::headingTimer);
-  }
+  clearPrev(TORQUE);
+
   for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++)
   {
     lv_arc_set_range(diagArcs[i], 0, 100);
@@ -308,14 +324,7 @@ void loadTorqueScreen(lv_event_t *e)
 
 void loadSpeedScreen(lv_event_t *e)
 {
-  if (heading::headingChart != nullptr)
-  {
-    lv_obj_add_flag(heading::headingChart, LV_OBJ_FLAG_HIDDEN);
-  }
-  if (heading::headingTimer != nullptr)
-  {
-    lv_timer_pause(heading::headingTimer);
-  }
+  clearPrev(SPEED);
   for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++)
   {
     lv_arc_set_range(diagArcs[i], 0, motors[i].RPM);
@@ -327,10 +336,7 @@ void loadSpeedScreen(lv_event_t *e)
 
 void loadHeadingScreen(lv_event_t *e)
 {
-  for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++)
-  {
-    lv_obj_add_flag(diagArcs[i], LV_OBJ_FLAG_HIDDEN);
-  }
+  clearPrev(HEADING);
   if (heading::headingTimer == nullptr)
   {
     heading::headingTimer = lv_timer_create(updateChartLVGL, 100, NULL);
@@ -345,6 +351,96 @@ void loadHeadingScreen(lv_event_t *e)
   }
   currentScreen = HEADING;
 }
+
+const int16_t x_pos = 40;
+const int16_t y_pos = -20;
+
+void loadPositionScreen(lv_event_t *e)
+{
+  clearPrev(POSITION);
+  if (square[0][0] == nullptr)
+  {
+    for (int i = 0; i < square_num; i++)
+    {
+      for (int j = 0; j < square_num; j++)
+      {
+        square[i][j] = lv_obj_create(diagScreen);
+        lv_obj_set_size(square[i][j], square_width, square_width);
+        lv_obj_align(square[i][j], LV_ALIGN_CENTER, (i - 2) * (square_width + square_spacing), ((j - 2) * (square_width + square_spacing)) + 15);
+        lv_obj_set_style_bg_color(square[i][j], lv_palette_main(LV_PALETTE_GREY), 0);
+        lv_obj_set_style_border_color(square[i][j], lv_palette_main(LV_PALETTE_PURPLE), 0);
+        lv_obj_set_style_border_width(square[i][j], 2, 0);
+        lv_obj_set_style_radius(square[i][j], 1, 0);
+        lv_obj_remove_flag(square[i][j], LV_OBJ_FLAG_SCROLLABLE);
+      }
+    }
+  }
+  else
+  {
+    for (int i = 0; i < square_num; i++)
+    {
+      for (int j = 0; j < square_num; j++)
+      {
+        lv_obj_remove_flag(square[i][j], LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+  }
+
+  if (map_POS == nullptr)
+  {
+
+    map_POS = lv_obj_create(diagScreen);
+
+    lv_obj_set_size(map_POS, 15, 15);
+    lv_obj_set_style_radius(map_POS, 10, 0);
+    lv_obj_set_style_bg_color(map_POS, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_align_to(map_POS, square[2][2], LV_ALIGN_CENTER, 0 + x_pos, 0 - y_pos);
+    lv_obj_remove_flag(map_POS, LV_OBJ_FLAG_SCROLLABLE);
+  }
+  else
+  {
+    lv_obj_remove_flag(map_POS, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  currentScreen = POSITION;
+}
+
+void clearPrev(screenStatus currentScreen)
+{
+  if (currentScreen != (TEMP || SPEED || TORQUE))
+  {
+    for (int i = 0; i < sizeof(motors) / sizeof(motors[0]); i++)
+    {
+      lv_obj_add_flag(diagArcs[i], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (currentScreen != HEADING)
+  {
+    if (heading::headingChart != nullptr)
+    {
+      lv_obj_add_flag(heading::headingChart, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (heading::headingTimer != nullptr)
+    {
+      lv_timer_pause(heading::headingTimer);
+    }
+  }
+  if (currentScreen != POSITION)
+  {
+    if (square[0][0] != nullptr)
+    {
+      for (int i = 0; i < square_num; i++)
+      {
+        for (int j = 0; j < square_num; j++)
+        {
+          lv_obj_add_flag(square[i][j], LV_OBJ_FLAG_HIDDEN);
+        }
+      }
+      lv_obj_add_flag(map_POS, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
 void screen_init()
 {
   startScreen = lv_obj_create(NULL);
@@ -364,10 +460,8 @@ void screen_init()
       createLVGLText(startScreen, "22204N", LV_ALIGN_TOP_MID, 0, 15);
   int battery_per = (pros::battery::get_capacity());
 
-  start::Battery = createLVGLText(startScreen, std::to_string(battery_per).c_str(), LV_ALIGN_BOTTOM_MID, 0, -12);
-  lv_obj_set_style_text_font(start::Battery, &lv_font_montserrat_16, 0);
-
   start::Bat_bg_end = lv_obj_create(startScreen);
+
   lv_obj_set_size(start::Bat_bg_end, 10, 10);
   if (pros::battery::get_capacity() == 100)
   {
@@ -380,6 +474,7 @@ void screen_init()
   lv_obj_set_style_border_color(start::Bat_bg_end, lv_palette_main(LV_PALETTE_PURPLE), 0);
   lv_obj_set_style_border_width(start::Bat_bg_end, 2, 0);
   lv_obj_set_style_radius(start::Bat_bg_end, 2, 0);
+  lv_obj_remove_flag(start::Bat_bg_end, LV_OBJ_FLAG_SCROLLABLE);
 
   start::Bat_bg_body = lv_obj_create(startScreen);
   lv_obj_set_size(start::Bat_bg_body, 100, 20);
@@ -388,16 +483,21 @@ void screen_init()
   lv_obj_set_style_border_color(start::Bat_bg_body, lv_palette_main(LV_PALETTE_PURPLE), 0);
   lv_obj_set_style_border_width(start::Bat_bg_body, 2, 0);
   lv_obj_set_style_radius(start::Bat_bg_body, 4, 0);
+  lv_obj_remove_flag(start::Bat_bg_body, LV_OBJ_FLAG_SCROLLABLE);
 
   start::Bat_bar = lv_obj_create(start::Bat_bg_body);
   lv_obj_set_size(start::Bat_bar, static_cast<int>(pros::battery::get_capacity()), 20);
-  lv_obj_align(start::Bat_bar, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_set_style_bg_color(start::Bat_bar, lv_palette_main(LV_PALETTE_PURPLE), 0);
   lv_obj_set_style_border_color(start::Bat_bar, lv_palette_main(LV_PALETTE_PURPLE), 0);
   lv_obj_set_style_border_width(start::Bat_bar, 2, 0);
   lv_obj_set_style_radius(start::Bat_bar, 4, 0);
+  lv_obj_remove_flag(start::Bat_bar, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_align_to(start::Bat_bg_end, start::Bat_bg_body, LV_ALIGN_LEFT_MID, -25, 0);
+  lv_obj_align_to(start::Bat_bar, start::Bat_bg_body, LV_ALIGN_RIGHT_MID, 25, 0);
+
+  start::Battery = createLVGLText(startScreen, std::to_string(battery_per).c_str(), LV_ALIGN_TOP_MID, 0, 192);
+  lv_obj_set_style_text_font(start::Battery, &lv_font_montserrat_16, 0);
 
   lv_screen_load(startScreen);
 }

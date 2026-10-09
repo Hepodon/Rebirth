@@ -8,35 +8,34 @@
 
 using namespace pros;
 
-const std::vector<std::int8_t> rightDTPorts{8, 9, -11};
+const std::vector<std::int8_t> rightDTPorts{-12, -21};
 
-const std::vector<std::int8_t> leftDTPorts{-1, -2, 3};
+const std::vector<std::int8_t> leftDTPorts{10, 13};
 
-Motors motors[6]{
-    {"DT-leftMini", {3, 0, 0, 0}, 200},  {"DT-rightMini", {11, 0, 0, 0}, 200},
-    {"DT-leftFront", {1, 0, 0, 0}, 600}, {"DT-rightFront", {8, 0, 0, 0}, 600},
-    {"DT-leftBack", {2, 0, 0, 0}, 600},  {"DT-rightBack", {9, 0, 0, 0}, 600}};
+Motors motors[9]{
+
+    {"DT-LFRONT", {13, 0, 0, 0}, 600}, {"DT-LBack", {10, 0, 0, 0}, 600}, {"DT-RFront", {-12, 0, 0, 0}, 600}, {"DT-RBack", {-21, 0, 0, 0}, 600}, {"Intake", {4, 0, 0, 0}, 600}, {"Extake", {-6, 0, 0, 0}, 200}, {"Rotate", {8, 0, 0, 0}, 200}, {"CascadeL", {9, 0, 0, 0}, 200}, {"CascadeR", {-1, 0, 0, 0}, 200}};
 
 MotorGroup aleft(leftDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 MotorGroup aright(rightDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 
-Rotation vertRotation(0);
+Motor intake(4);
+Motor rotate(8);
+Motor shitter(6);
 
-Rotation horRotation(0);
+MotorGroup cascade({9, -1});
 
-v5::Optical colorSensor(0);
+Rotation vertRotation(11);
 
-lemlib::Drivetrain DT(&aleft, &aright, 12.72, lemlib::Omniwheel::NEW_325, 450,
-                      8);
+lemlib::Drivetrain DT(&aleft, &aright, 11, lemlib::Omniwheel::NEW_275, 360,
+                      4);
 
-IMU inertial1(13);
-IMU inertial2(0);
+IMU inertial2(20);
+IMU inertial1(16);
 
 lemlib::TrackingWheel leftVert(&vertRotation, lemlib::Omniwheel::NEW_2, 0.0, 1);
 
-lemlib::TrackingWheel leftVHor(&horRotation, lemlib::Omniwheel::NEW_2, 0.0, 1);
-
-lemlib::OdomSensors sensors(&leftVert, nullptr, &leftVHor, nullptr, &inertial1);
+lemlib::OdomSensors sensors(&leftVert, nullptr, nullptr, nullptr, &inertial1);
 
 lemlib::ControllerSettings
     lateral_controller(5,   // proportional gain (kP)
@@ -51,9 +50,9 @@ lemlib::ControllerSettings
     );
 
 lemlib::ControllerSettings
-    angular_controller(2.45, // proportional gain (kP)
+    angular_controller(3, // proportional gain (kP)
                        0,    // integral gain (kI)
-                       10,   // derivative gain (kD)
+                       3,   // derivative gain (kD)
                        3,    // anti windup
                        1,    // small error range, in degrees
                        100,  // small error range timeout, in milliseconds
