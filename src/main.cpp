@@ -13,77 +13,76 @@
 #include <cstdio>
 
 using namespace pros;
-using namespace std;
 
-constexpr size_t PARTICLES = 3000;
-ad::MCL<PARTICLES> mcl;
-ad::Point last_odom_pos{0.0f, 0.0f};
-bool mcl_initialized = false;
+// constexpr size_t PARTICLES = 3000;
+// ad::MCL<PARTICLES> mcl;
+// ad::Point last_odom_pos{0.0f, 0.0f};
+// bool mcl_initialized = false;
 
-void odom()
-{
+// void odom()
+// {
 
-  auto pose = chassis.getPose();
+//   auto pose = chassis.getPose();
 
-  float odom_x = pose.x;
-  float odom_y = pose.y;
+//   float odom_x = pose.x;
+//   float odom_y = pose.y;
 
-  ad::Point current_odom{odom_x, odom_y};
+//   ad::Point current_odom{odom_x, odom_y};
 
-  float dx = current_odom.x - last_odom_pos.x;
-  float dy = current_odom.y - last_odom_pos.y;
+//   float dx = current_odom.x - last_odom_pos.x;
+//   float dy = current_odom.y - last_odom_pos.y;
 
-  last_odom_pos = current_odom;
+//   last_odom_pos = current_odom;
 
-  float std_dev = std::hypot(dx, dy) / 4.0f;
-  mcl.predict(dx, dy, std_dev);
+//   float std_dev = std::hypot(dx, dy) / 4.0f;
+//   mcl.predict(dx, dy, std_dev);
 
-  std::vector<ad::Reading> readings;
+//   std::vector<ad::Reading> readings;
 
-  float theta = inertial1.get_rotation() * M_PI / 180.0f;
-  ad::Rotation heading = ad::rad(theta);
+//   float theta = inertial1.get_rotation() * M_PI / 180.0f;
+//   ad::Rotation heading = ad::rad(theta);
 
-  ad::Position robot_pos{current_odom.x, current_odom.y, heading};
+//   ad::Position robot_pos{current_odom.x, current_odom.y, heading};
 
-  auto add_sensor = [&](Distance &sensor, ad::Position offset)
-  {
-    auto v = sensor.get();
-    if (!v)
-      return;
+//   auto add_sensor = [&](Distance &sensor, ad::Position offset)
+//   {
+//     auto v = sensor.get();
+//     if (!v)
+//       return;
 
-    float d = v;
+//     float d = v;
 
-    float bound = d < 7.874015f ? 0.590551f : 0.05f * d;
-    constexpr float K = 3.0f;
-    float std_dev = std::max(bound / K, 1e-6f);
+//     float bound = d < 7.874015f ? 0.590551f : 0.05f * d;
+//     constexpr float K = 3.0f;
+//     float std_dev = std::max(bound / K, 1e-6f);
 
-    ad::Position rel = offset.rotate(robot_pos.theta);
-    ad::Point ray_pt =
-        rel.point() + ad::Point{rel.theta.cos(), rel.theta.sin()};
+//     ad::Position rel = offset.rotate(robot_pos.theta);
+//     ad::Point ray_pt =
+//         rel.point() + ad::Point{rel.theta.cos(), rel.theta.sin()};
 
-    readings.emplace_back(d, std_dev, rel.point(), ray_pt);
-  };
+//     readings.emplace_back(d, std_dev, rel.point(), ray_pt);
+//   };
 
-  // add_sensor(Dleft, ad::Position{-5.0f, 0.0f, ad::deg(180)});
-  // add_sensor(Dright, ad::Position{5.0f, 0.0f, ad::deg(0)});
-  // add_sensor(Dfront, ad::Position{0.0f, 5.0f, ad::deg(90)});
-  // add_sensor(DbackL, ad::Position{0.0f, -5.0f, ad::deg(-90)});
+//   // add_sensor(Dleft, ad::Position{-5.0f, 0.0f, ad::deg(180)});
+//   // add_sensor(Dright, ad::Position{5.0f, 0.0f, ad::deg(0)});
+//   // add_sensor(Dfront, ad::Position{0.0f, 5.0f, ad::deg(90)});
+//   // add_sensor(DbackL, ad::Position{0.0f, -5.0f, ad::deg(-90)});
 
-  mcl.update(readings);
+//   mcl.update(readings);
 
-  ad::Point est = mcl.estimate();
+//   ad::Point est = mcl.estimate();
 
-  chassis.setPose(est.x, est.y, 0);
+//   chassis.setPose(est.x, est.y, 0);
 
-  mcl.resample();
-}
+//   mcl.resample();
+// }
 
-Task odomTask([]
-              {
-  while (true) {
-    odom();
-    delay(10);
-  } });
+// Task odomTask([]
+//               {
+//   while (true) {
+//     odom();
+//     delay(10);
+//   } });
 
 float mm_in(float mm) { return mm / 25.4; }
 
@@ -117,10 +116,23 @@ void autonomous() {
   // while (!aready) {
   //   delay(20);
   // }
+  // Red Right
   // autononm(selectedAutonomo);
-  chassis.turnToHeading(90, 100000, {.direction = lemlib::AngularDirection::CW_CLOCKWISE});
+  chassis.moveToPoint(0, -5, 650, {.forwards = false, .minSpeed = 85});
   chassis.waitUntilDone();
-  intake.move(80);
+
+  chassis.arcade(127, 0);
+  delay(500);
+  chassis.cancelAllMotions();
+
+  rotate.move_absolute(720, 200);
+  chassis.moveToPose(24, -16, -90, 3000, {.forwards = false, .horizontalDrift = 4});
+  chassis.waitUntilDone();
+  shitter.move_velocity(50 ); 
+  cascade.move_absolute(50, 100);
+  rotate.move_absolute(1000, 200);
+  chassis.moveToPose(26, -40, 0, 3000, {.forwards = false, .horizontalDrift = 4});
+  
 }
 
 void buttonsTask()
