@@ -86,8 +86,8 @@ using namespace pros;
 
 float mm_in(float mm) { return mm / 25.4; }
 
-void initialize()
-{  chassis.calibrate(true);
+void initialize() {
+  chassis.calibrate(false);
 
   lvgl_init();
   screen_init();
@@ -95,20 +95,20 @@ void initialize()
 
 void disabled() {}
 
-void competition_initialize() {  }
+void competition_initialize() { chassis.calibrate(true); }
 
 void autononm(AutonSel AUTON) {
   switch (AUTON) {
-    case (Blue_L):
+  case (Blue_L):
     break;
-    case (Blue_R):
+  case (Blue_R):
     break;
-    case (Red_L):
+  case (Red_L):
     break;
-    case (Red_R):
+  case (Red_R):
     break;
-    case (Skills):
-    break; 
+  case (Skills):
+    break;
   }
 }
 
@@ -118,40 +118,51 @@ void autonomous() {
   // }
   // Red Right
   // autononm(selectedAutonomo);
-  chassis.moveToPoint(0, -5, 650, {.forwards = false, .minSpeed = 85});
-  chassis.waitUntilDone();
+  // chassis.moveToPoint(0, -10, 650, {.forwards = false, .minSpeed = 85});
+  // chassis.waitUntilDone();
 
+  chassis.arcade(-127, 0);
+  delay(400);
   chassis.arcade(127, 0);
-  delay(500);
-  chassis.cancelAllMotions();
-
-  rotate.move_absolute(720, 200);
-  chassis.moveToPose(24, -16, -90, 3000, {.forwards = false, .horizontalDrift = 4});
-  chassis.waitUntilDone();
-  shitter.move_velocity(50 ); 
-  cascade.move_absolute(50, 100);
-  rotate.move_absolute(1000, 200);
-  chassis.moveToPose(26, -40, 0, 3000, {.forwards = false, .horizontalDrift = 4});
+  delay(800);
   
+  chassis.arcade(-127, -80);
+  delay(400);
+  chassis.arcade(90, 0);
+  delay(800);
+  chassis.arcade(-60, 0);
+  delay(400);
+  chassis.arcade(0,0);
+  
+  chassis.cancelAllMotions();
+  
+  // chassis.moveToPoint(0, -10, 650, {.forwards = false, .minSpeed = 85});
+  // chassis.waitUntilDone();
+
+  
+
+  // shitter.move(-50);
+  // rotate.move_absolute(720, 200);
+  // chassis.moveToPose(24, -16, -90, 3000,
+  //                    {.forwards = false, .horizontalDrift = 4});
+  // chassis.waitUntilDone();
+  // shitter.move(50);
+  // cascade.move_absolute(50, 100);
 }
 
-void buttonsTask()
-{
-  while (true)
-  {
+void buttonsTask() {
+  while (true) {
     applyButtons(userInput);
     delay(15);
   }
 }
 
-void opcontrol()
-{
+void opcontrol() {
   Task ok(buttonsTask);
 
   chassis.setBrakeMode(E_MOTOR_BRAKE_COAST);
 
-  while (true)
-  {
+  while (true) {
 
     chassis.arcade(userInput.get_analog(ANALOG_LEFT_Y),
                    userInput.get_analog(ANALOG_RIGHT_X), false, 0.40);
