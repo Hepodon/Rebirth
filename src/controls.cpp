@@ -5,126 +5,117 @@
 #include "pros/misc.hpp"
 #include "pros/rtos.hpp"
 
-pros::controller_digital_e_t buttons[13] = {
-    pros::E_CONTROLLER_DIGITAL_R1,   pros::E_CONTROLLER_DIGITAL_R2,
-    pros::E_CONTROLLER_DIGITAL_L1,   pros::E_CONTROLLER_DIGITAL_L2,
-    pros::E_CONTROLLER_DIGITAL_UP,   pros::E_CONTROLLER_DIGITAL_DOWN,
-    pros::E_CONTROLLER_DIGITAL_LEFT, pros::E_CONTROLLER_DIGITAL_RIGHT,
-    pros::E_CONTROLLER_DIGITAL_A,    pros::E_CONTROLLER_DIGITAL_B,
-    pros::E_CONTROLLER_DIGITAL_X,    pros::E_CONTROLLER_DIGITAL_Y,
-    pros::E_CONTROLLER_DIGITAL_POWER};
-
-void applyButtons(pros::Controller userInput) {
-  for (pros::controller_digital_e_t button : buttons) {
-    if (userInput.get_digital_new_press(button)) {
-      buttonFunction(button);
-    }
-  }
-}
-
-bool restPos = true;
-
 void erect() {
-  rotate.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+  rotate.move(75);
   while (userInput.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {
-    rotate.move(90);
+    pros::delay(15);
   }
   rotate.brake();
 }
 
 void deErect() {
-  rotate.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+  if (!(rotate.get_position() < 0.0)) {
+    rotate.move(-75);
+  }
   while (userInput.get_digital(pros::E_CONTROLLER_DIGITAL_B)) {
     if (!(rotate.get_position() < 0.0)) {
-      rotate.move(-90);
-    } else {
       rotate.brake();
     }
+    pros::delay(15);
   }
   rotate.brake();
 }
 
 void suck() {
+  intake.move(127);
+  shitter.move(-127);
   while (userInput.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
-    intake.move(127);
-    shitter.move(-127);
-    pros::delay(20);
+    pros::delay(15);
   }
   intake.brake();
   shitter.brake();
 }
 
 void spit() {
+  intake.move(-127);
+  shitter.move(127);
   while (userInput.get_digital(pros::E_CONTROLLER_DIGITAL_L1)) {
-    intake.move(-127);
-    shitter.move(127);
-    pros::delay(20);
+    pros::delay(15);
   }
   intake.brake();
   shitter.brake();
 }
 
 void CasUp() {
-  cascade.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+  cascade.move(127);
   while (userInput.get_digital(pros::E_CONTROLLER_DIGITAL_UP)) {
-    cascade.move(127);
+    pros::delay(15);
   }
   cascade.brake();
 }
 
 void CasDown() {
-  cascade.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+  if (cascade.get_position() >= -1) {
+    cascade.move(-127);
+  }
   while (userInput.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN)) {
-    if (!(cascade.get_position() < 0.0)) {
-      cascade.move(-127);
-    } else {
-      cascade  .brake();
+    if (cascade.get_position() < -0.5) {
+      cascade.brake();
     }
+    pros::delay(15);
   }
   cascade.brake();
 }
 
 void score() {
+  shitter.move(127);
   while (userInput.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
-    shitter.move(127);
+    pros::delay(15);
   }
   shitter.brake();
 }
 
-void buttonFunction(pros::controller_digital_e_t button) {
-  switch (button) {
-  case pros::E_CONTROLLER_DIGITAL_R1:
-    erect();
-    break;
-  case pros::E_CONTROLLER_DIGITAL_R2:
-    score();
-    break;
-  case pros::E_CONTROLLER_DIGITAL_L2:
-    suck();
-    break;
-  case pros::E_CONTROLLER_DIGITAL_L1:
-    spit();
-    break;
-  case pros::E_CONTROLLER_DIGITAL_UP:
-    CasUp();
-    break;
-  case pros::E_CONTROLLER_DIGITAL_DOWN:
-    CasDown();
-    break;
-  case pros::E_CONTROLLER_DIGITAL_LEFT:
-    break;
-  case pros::E_CONTROLLER_DIGITAL_RIGHT:
-    break;
-  case pros::E_CONTROLLER_DIGITAL_A:
-    break;
-  case pros::E_CONTROLLER_DIGITAL_B:
-    deErect();
-    break;
-  case pros::E_CONTROLLER_DIGITAL_X:
-    break;
-  case pros::E_CONTROLLER_DIGITAL_Y:
-    break;
-  case pros::E_CONTROLLER_DIGITAL_POWER:
-    break;
+void resetCascadeRotate() {
+  cascade.move_absolute(0, 200);
+  rotate.move_absolute(0, 200);
+}
+
+void buttonFunctionPinControls() {
+  while (true) {
+    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2)) {
+      suck();
+    } else if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R2)) {
+      score();
+    } else if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)) {
+      spit();
+    }
+    pros::delay(15);
+  }
+}
+
+void buttonFunctionCasControls() {
+  cascade.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+  cascade.brake();
+  while (true) {
+    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_UP)) {
+      CasUp();
+    } else if (userInput.get_digital_new_press(
+                   pros::E_CONTROLLER_DIGITAL_DOWN)) {
+      CasDown();
+    }
+    pros::delay(15);
+  }
+}
+
+void buttonFunctionShitControls() {
+  rotate.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+  rotate.brake();
+  while (true) {
+    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1)) {
+      erect();
+    } else if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_B)) {
+      deErect();
+    }
+    pros::delay(15);
   }
 }

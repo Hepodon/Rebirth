@@ -7,6 +7,7 @@
 #include "lvgl_Customs.hpp"
 #include "mcl.hpp"
 #include "portDef.hpp"
+#include "pros/misc.h"
 #include "pros/motors.h"
 #include "pros/screen.hpp"
 #include <cmath>
@@ -84,7 +85,7 @@ using namespace pros;
 //     delay(10);
 //   } });
 
-float mm_in(float mm) { return mm / 25.4; }
+// float mm_in(float mm) { return mm / 25.4; }
 
 void initialize() {
   chassis.calibrate(false);
@@ -118,6 +119,7 @@ void autonomous() {
   // }
   // Red Right
   // autononm(selectedAutonomo);
+
   // chassis.moveToPoint(0, -10, 650, {.forwards = false, .minSpeed = 85});
   // chassis.waitUntilDone();
 
@@ -125,21 +127,19 @@ void autonomous() {
   delay(400);
   chassis.arcade(127, 0);
   delay(800);
-  
+
   chassis.arcade(-127, -80);
   delay(400);
   chassis.arcade(90, 0);
   delay(800);
   chassis.arcade(-60, 0);
   delay(400);
-  chassis.arcade(0,0);
-  
+  chassis.arcade(0, 0);
+
   chassis.cancelAllMotions();
-  
+
   // chassis.moveToPoint(0, -10, 650, {.forwards = false, .minSpeed = 85});
   // chassis.waitUntilDone();
-
-  
 
   // shitter.move(-50);
   // rotate.move_absolute(720, 200);
@@ -150,20 +150,17 @@ void autonomous() {
   // cascade.move_absolute(50, 100);
 }
 
-void buttonsTask() {
-  while (true) {
-    applyButtons(userInput);
-    delay(15);
-  }
-}
-
 void opcontrol() {
-  Task ok(buttonsTask);
+  Task ok1(buttonFunctionPinControls);
+  Task ok2(buttonFunctionCasControls);
+  Task ok3(buttonFunctionShitControls);
 
   chassis.setBrakeMode(E_MOTOR_BRAKE_COAST);
 
   while (true) {
-
+    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_Y)) {
+      resetCascadeRotate();
+    }
     chassis.arcade(userInput.get_analog(ANALOG_LEFT_Y),
                    userInput.get_analog(ANALOG_RIGHT_X), false, 0.40);
 
