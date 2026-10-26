@@ -114,40 +114,7 @@ void autononm(AutonSel AUTON) {
 }
 
 void autonomous() {
-  // while (!aready) {
-  //   delay(20);
-  // }
-  // Red Right
-  // autononm(selectedAutonomo);
-
-  // chassis.moveToPoint(0, -10, 650, {.forwards = false, .minSpeed = 85});
-  // chassis.waitUntilDone();
-
-  chassis.arcade(-127, 0);
-  delay(400);
-  chassis.arcade(127, 0);
-  delay(800);
-
-  chassis.arcade(-127, -80);
-  delay(400);
-  chassis.arcade(90, 0);
-  delay(800);
-  chassis.arcade(-60, 0);
-  delay(400);
-  chassis.arcade(0, 0);
-
-  chassis.cancelAllMotions();
-
-  // chassis.moveToPoint(0, -10, 650, {.forwards = false, .minSpeed = 85});
-  // chassis.waitUntilDone();
-
-  // shitter.move(-50);
-  // rotate.move_absolute(720, 200);
-  // chassis.moveToPose(24, -16, -90, 3000,
-  //                    {.forwards = false, .horizontalDrift = 4});
-  // chassis.waitUntilDone();
-  // shitter.move(50);
-  // cascade.move_absolute(50, 100);
+  chassis.moveToPoint(0, -10, 650, {.forwards = false, .minSpeed = 85});
 }
 
 void opcontrol() {
@@ -157,8 +124,10 @@ void opcontrol() {
 
   chassis.setBrakeMode(E_MOTOR_BRAKE_COAST);
 
+  rotate.brake();
+
   while (true) {
-    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_Y)) {
+    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_RIGHT)) {
       resetCascadeRotate();
     }
     chassis.arcade(userInput.get_analog(ANALOG_LEFT_Y),
