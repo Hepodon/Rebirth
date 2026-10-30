@@ -22,6 +22,9 @@ extern pros::Motor shitter;
 extern pros::MotorGroup cascade;
 
 
+extern pros::Distance left_D;
+extern pros::Distance right_D;
+
 extern pros::Rotation vertRotation;
 
 extern pros::v5::Optical colorSensor;

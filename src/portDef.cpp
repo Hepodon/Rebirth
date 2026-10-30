@@ -37,6 +37,9 @@ lemlib::Drivetrain DT(&aleft, &aright, 11, lemlib::Omniwheel::NEW_275, 360,
 IMU inertial2(20);
 IMU inertial1(16);
 
+Distance left_D(7);
+Distance right_D(14);
+
 lemlib::TrackingWheel leftVert(&vertRotation, lemlib::Omniwheel::NEW_2, 0.0, 1);
 
 lemlib::OdomSensors sensors(&leftVert, nullptr, nullptr, nullptr, &inertial1);
