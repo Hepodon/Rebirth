@@ -92,20 +92,8 @@ int dist_spacing = 245;
 void initialize() {
   chassis.calibrate(false);
 
-  // lvgl_init();
-  // screen_init();
-  pros::lcd::initialize(); // initialize brain screen
-  // print position to brain screen
-  pros::Task screen_task([&]() {
-    while (true) {
-      // print robot location to the brain screen
-      pros::lcd::print(0, "X: %f", chassis.getPose().x);         // x
-      pros::lcd::print(1, "Y: %f", chassis.getPose().y);         // y
-      pros::lcd::print(2, "Theta: %f", chassis.getPose().theta); // heading
-      // delay to save resources
-      pros::delay(20);
-    }
-  });
+  lvgl_init();
+  screen_init();
 }
 
 float get_theta_rel() {
