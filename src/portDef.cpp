@@ -68,7 +68,7 @@ lemlib::ControllerSettings
                        16      // maximum acceleration (slew)
     );
 
-lemlib::ExpoDriveCurve driveCurve(3, 15, 1.015);
+lemlib::ExpoDriveCurve driveCurve(0, 15, 1.015);
 
 lemlib::Chassis chassis(DT, lateral_controller, angular_controller, sensors,
                         &driveCurve, &driveCurve);

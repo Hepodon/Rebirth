@@ -90,7 +90,8 @@ using namespace pros;
 int dist_spacing = 245;
 
 void initialize() {
-  chassis.calibrate(false);
+  chassis.calibrate(true);
+  chassis.setPose(0, 0, 0);
 
   lvgl_init();
   screen_init();
@@ -115,7 +116,7 @@ float get_dist_rel_in(float theta) {
 
 void disabled() {}
 
-void competition_initialize() { chassis.calibrate(true); }
+void competition_initialize() {}
 
 void autononm(AutonSel AUTON) {
   switch (AUTON) {
@@ -141,7 +142,6 @@ void autonomous() {
   // }
   // Red Right
   // autononm(selectedAutonomo);
-  chassis.setPose(0, 0, 0);
   chassis.moveToPoint(0, -5, 650, {.forwards = false, .minSpeed = 85});
   chassis.waitUntil(4);
   chassis.cancelAllMotions();
@@ -151,18 +151,23 @@ void autonomous() {
   pros::delay(450);
   chassis.arcade(105, 0);
   pros::delay(650);
+  chassis.arcade(-60, 0);
+  pros::delay(200);
+  chassis.arcade(0, 0);
   chassis.cancelAllMotions();
+  pros::delay(200);
 
   float theta = -get_theta_rel();
 
-  chassis.setPose(chassis.getPose().x, get_dist_rel_in(theta), theta);
+  chassis.setPose(chassis.getPose().x, -get_dist_rel_in(theta), theta);
 
-  rotate.move_absolute(760, 200);
-  chassis.moveToPose(37.5, -23, -30, 1450,
+  shitter.move(-90);
+  rotate.move_absolute(720, 200);
+  chassis.moveToPose(26, -21, -90, 2500,
                      {.forwards = false, .horizontalDrift = 4, .lead = 0.5});
   chassis.waitUntilDone();
   delay(150);
-  shitter.move_velocity(100);
+  shitter.move(100);
 }
 
 void opcontrol() {
@@ -175,8 +180,12 @@ void opcontrol() {
   rotate.brake();
 
   while (true) {
-    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_RIGHT)) {
-      resetCascadeRotate();
+
+    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_A)) {
+
+      float theta = -get_theta_rel();
+
+      chassis.setPose(chassis.getPose().x, get_dist_rel_in(theta), theta);
     }
 
     chassis.arcade(userInput.get_analog(ANALOG_LEFT_Y),
