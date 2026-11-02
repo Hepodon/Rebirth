@@ -1,24 +1,26 @@
 #pragma once
 
 // ===================== Includes =====================
+#include "pros/apix.h"
+#include "pros/distance.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <numbers>
 #include <optional>
 #include <vector>
 
-#include "pros/apix.h"
-#include "pros/distance.hpp"
 
 // ===================== Field Constants =====================
 
 // Official VEX Competition Field size in inches
-const float FIELD_SIZE = 140.42f;
-const float HALF_SIZE = 0.5f * FIELD_SIZE;
-const float FIELD_MIN = -HALF_SIZE;
-const float FIELD_MAX = HALF_SIZE;
+constexpr float FIELD_SIZE = 140.42f;
+constexpr float HALF_SIZE = 0.5f * FIELD_SIZE;
+constexpr float FIELD_MIN = -HALF_SIZE;
+constexpr float FIELD_MAX = HALF_SIZE;
 
 // ===================== Rotation =====================
 namespace ad {
@@ -323,8 +325,23 @@ template <size_t N> struct MCL {
   float presample_y[N];
   float presample_weights[N];
 
-  XorShift32 rng;
+  float outlier_floor =
+      0.02f; // per-reading likelihood floor (robust to bad readings)
+  float min_predict_std = 0.01f;
+  float roughen_std = 0.02f;
 
+  XorShift32 rng;
+  void spread_xy(float &sx, float &sy) const {
+    Point m = estimate();
+    float vx = 0.0f, vy = 0.0f;
+    for (size_t i = 0; i < N; ++i) {
+      float dx = particle_x[i] - m.x, dy = particle_y[i] - m.y;
+      vx += particle_weights[i] * dx * dx;
+      vy += particle_weights[i] * dy * dy;
+    }
+    sx = std::sqrt(vx);
+    sy = std::sqrt(vy);
+  }
   MCL() : rng(pros::micros()) {
     std::fill(particle_x, particle_x + N, 0.0f);
     std::fill(particle_y, particle_y + N, 0.0f);
@@ -349,58 +366,79 @@ template <size_t N> struct MCL {
     }
   }
 
-  // Move all particles by (dx, dy) with Gaussian noise
   void predict(float dx, float dy, float std_dev) {
+    std_dev = std::max(std_dev, min_predict_std); // noise floor
     for (size_t i = 0; i < N; ++i) {
-      particle_x[i] += dx + rng.gaussian(std_dev);
-      particle_y[i] += dy + rng.gaussian(std_dev);
-      // Clamp to field bounds
-      particle_x[i] = std::clamp(particle_x[i], FIELD_MIN, FIELD_MAX);
-      particle_y[i] = std::clamp(particle_y[i], FIELD_MIN, FIELD_MAX);
+      particle_x[i] = std::clamp(particle_x[i] + dx + rng.gaussian(std_dev),
+                                 FIELD_MIN, FIELD_MAX);
+      particle_y[i] = std::clamp(particle_y[i] + dy + rng.gaussian(std_dev),
+                                 FIELD_MIN, FIELD_MAX);
     }
   }
 
-  // Weight particles by how well they explain the sensor readings
   void update(const std::vector<Reading> &readings) {
     if (readings.empty())
       return;
 
+    // Pass 1: log-weights (temp_weights is used as scratch, resample overwrites
+    // it)
+    float max_lw = -std::numeric_limits<float>::infinity();
     for (size_t i = 0; i < N; ++i) {
       Point pos{particle_x[i], particle_y[i]};
-      float log_weight = 0.0f;
+      float lw = std::log(std::max(particle_weights[i], 1e-30f));
 
       for (const auto &r : readings) {
         auto predicted = r.predict(pos);
-        if (!predicted.has_value()) {
-          // Particle is in a position where the ray never hits a wall —
-          // heavily penalise it
-          log_weight += r.inv_var * (FIELD_SIZE * FIELD_SIZE);
-          continue;
-        }
-        float diff = *predicted - r.recorded;
-        // inv_var is already -0.5 / sigma^2, so this gives the log-likelihood
-        log_weight += r.inv_var * (diff * diff);
+        float diff = predicted ? (*predicted - r.recorded) : FIELD_SIZE;
+        float g = std::exp(r.inv_var * diff * diff); // inv_var = -0.5/sigma^2
+        lw += std::log(g + outlier_floor);           // robust: never exactly 0
       }
-
-      // Multiply the existing weight by exp(log_weight).
-      // Work in log-space to avoid underflow, then convert back.
-      particle_weights[i] *= std::exp(log_weight);
+      temp_weights[i] = lw;
+      max_lw = std::max(max_lw, lw);
     }
 
-    // Normalise weights so they sum to 1
+    // Pass 2: subtract max (log-sum-exp) so the best particle has weight 1
     float total = 0.0f;
-    for (size_t i = 0; i < N; ++i)
-      total += particle_weights[i];
-
-    if (total < 1e-12f) {
-      // All weights collapsed — reset to uniform to survive
-      std::fill(particle_weights, particle_weights + N, 1.0f / N);
-      return;
+    for (size_t i = 0; i < N; ++i) {
+      float w = std::exp(temp_weights[i] - max_lw);
+      particle_weights[i] = w;
+      total += w;
     }
-
-    float inv_total = 1.0f / total;
+    float inv_total = 1.0f / total; // total >= 1, never 0
     for (size_t i = 0; i < N; ++i)
       particle_weights[i] *= inv_total;
+  }
+
+  // Effective sample size: N = perfect, 1 = collapsed
+  float n_eff() const {
+    float s = 0.0f;
+    for (size_t i = 0; i < N; ++i)
+      s += particle_weights[i] * particle_weights[i];
+    return 1.0f / s;
+  }
+
+  // Weighted std-dev of the cloud in inches (use it as a confidence gate)
+  float spread() const {
+    Point m = estimate();
+    float v = 0.0f;
+    for (size_t i = 0; i < N; ++i) {
+      float dx = particle_x[i] - m.x, dy = particle_y[i] - m.y;
+      v += particle_weights[i] * (dx * dx + dy * dy);
+    }
+    return std::sqrt(v);
+  }
+
+  bool resample_if_needed(float ratio = 0.5f) {
+    if (n_eff() >= ratio * N)
+      return false;
+    resample();
+    for (size_t i = 0; i < N; ++i) { // roughening
+      particle_x[i] = std::clamp(particle_x[i] + rng.gaussian(roughen_std),
+                                 FIELD_MIN, FIELD_MAX);
+      particle_y[i] = std::clamp(particle_y[i] + rng.gaussian(roughen_std),
+                                 FIELD_MIN, FIELD_MAX);
+    }
+    return true;
   }
 
   // Weighted mean position of all particles
