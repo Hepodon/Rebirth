@@ -7,6 +7,7 @@
 #include "lvgl_Customs.hpp"
 #include "mcl.hpp"
 #include "portDef.hpp"
+#include "pros/llemu.hpp"
 #include "pros/misc.h"
 #include "pros/motors.h"
 #include "pros/screen.hpp"
@@ -14,24 +15,41 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
+#include <vector>
 
 using namespace pros;
+
 // =====================================================================
-//  CONFIG: the only part you edit when you move or add sensors
+//  CONFIG
 // =====================================================================
 constexpr float MM_TO_IN = 1.0f / 25.4f;
-constexpr float mm(float v) {
-  return v * MM_TO_IN;
-} // write measurements in mm if you like
+constexpr float mm(float v) { return v * MM_TO_IN; }
 
-constexpr float START_X = 0.0f, START_Y = 0.0f, START_THETA = 0.0f;
-
-// Field coordinates of your odometry's (0,0). MEASURE these.
-// Assumes odom axes are parallel to the field axes and heading 0 = field +Y.
-constexpr float ORIGIN_X = 0.0f;
-constexpr float ORIGIN_Y = FIELD_MIN + 7.0f;
+// FIELD FRAME: origin = field center, +X right, heading 0 = field +Y, heading
+// clockwise in degrees (LemLib). LemLib's pose IS the field pose, so
+// moveToPoint(20, 20) goes to the same physical spot from any start.
+//
+// The only things the robot cannot figure out itself are START_THETA (which way
+// you placed it) and, if no sensor can see a wall on an axis, a rough guess for
+// that axis.
+constexpr float FRONT_TO_CENTER_IN = 10.0f; // MEASURE: tracking center to wall when flush
+constexpr float START_X = 0.0f;             // rough guess; sensors override it
+constexpr float START_Y = FIELD_MAX - FRONT_TO_CENTER_IN;
+constexpr float START_THETA = 0.0f;         // MUST match how the robot is placed
 
 constexpr size_t PARTICLES = 1000;
+
+// Continuous correction tuning
+constexpr float GAIN_STILL = 0.30f;      // fraction of the error removed per loop
+constexpr float GAIN_MOVING = 0.08f;     // gentler while driving
+constexpr float MAX_STEP_STILL = 1.5f;   // max inches moved per loop
+constexpr float MAX_STEP_MOVING = 0.4f;
+constexpr float AXIS_SPREAD_GATE = 1.0f; // only correct an axis once it is this tight (in)
+constexpr float CORR_DEADBAND = 0.15f;   // ignore errors smaller than this (in)
+constexpr float CORR_MAX_ERR = 8.0f;     // larger disagreement: don't trust, press UP
+constexpr float MAX_TURN_DPS = 90.0f;    // skip sensor updates while turning faster
+constexpr float LAG_S = 0.06f;           // sensor latency, used to widen sigma with speed
 
 // Facing, in degrees CCW from the robot's right side
 constexpr float FACE_RIGHT = 0, FACE_FRONT = 90, FACE_LEFT = 180,
@@ -43,39 +61,56 @@ struct DistSensor {
   float x_in, y_in; // sensor FACE position from tracking center (x right, y
                     // forward), inches
   float facing_deg; // direction it points
-  bool use_in_mcl;  // false = ignore in MCL (e.g. sees a mechanism), still
-                    // usable by wall_reset
+  bool use_in_mcl;  // false = ignore in MCL (e.g. blocked by a mechanism)
 };
 
 DistSensor dist_sensors[] = {
-    //  name     device    x_in           y_in   facing      mcl
-    {"backL", &left_D, -mm(122.5f), -4.0f, FACE_BACK, true},
-    {"backR", &right_D, mm(122.5f), -4.0f, FACE_BACK, true},
-    // {"front", &front_D,  0.0f,       6.0f,  FACE_FRONT, true},
-    // {"side",  &side_D,   5.5f,       0.0f,  FACE_RIGHT, true},
+    //  name      device          x_in            y_in           facing      mcl
+    {"frontL", &left_D,        -mm(122.5f),    mm(130.0f),    FACE_FRONT, true},
+    {"frontR", &right_D,        mm(122.5f),    mm(130.0f),    FACE_FRONT, true},
+    {"left",   &side_left_D,   -mm(140.0f),   -mm(20.0f),     FACE_LEFT,  true},
+    {"right",  &side_right_D,   mm(140.0f),   -mm(20.0f),     FACE_RIGHT, true},
 };
 
-// Same order as the table above. Use these names when calling wall_reset().
-enum SensorId { BACK_L, BACK_R, /* FRONT, SIDE, */ SENSOR_COUNT };
+enum SensorId { FRONT_L, FRONT_R, LEFT, RIGHT, SENSOR_COUNT };
 constexpr int N_SENSORS = sizeof(dist_sensors) / sizeof(dist_sensors[0]);
 static_assert(N_SENSORS == SENSOR_COUNT,
               "SensorId enum and dist_sensors[] are out of sync");
-// =====================================================================
 
+// =====================================================================
+//  STATE
+// =====================================================================
 ad::MCL<PARTICLES> mcl;
 ad::Point last_odom{0.0f, 0.0f};
-std::atomic<bool> apply_mcl_request{false};
 std::atomic<bool> reset_pending{false};
-std::atomic<bool> mcl_apply_enabled{
-    false}; // correction kill switch (starts OFF)
-std::atomic<bool> snapshot_request{false}; // print one labeled line on demand
-std::atomic<float> nudge_y_request{0.0f}; // shift odom pose by this many inches
+std::atomic<bool> mcl_apply_enabled{true};  // continuous correction (B toggles)
+std::atomic<bool> snapshot_request{false};
+std::atomic<float> nudge_y_request{0.0f};
 pros::Task *mcl_task = nullptr;
+
+struct Box {
+  float x0, x1, y0, y1;
+};
+Box reset_box{};
+
+// Re-scatter the particles in a box; mcl_loop applies it (avoids a cross-task
+// race)
+static void request_particle_reset(float x0, float x1, float y0, float y1) {
+  reset_box = {x0, x1, y0, y1}; // written before the flag
+  reset_pending = true;
+}
 
 static bool valid_mm(int32_t v) { return v > 0 && v < 2000 && v != PROS_ERR; }
 
+int global_localize(); // defined below
+
+// =====================================================================
+//  MCL
+// =====================================================================
+// extra_sd widens every sensor's sigma (used while moving, because the sensor
+// reading is a few tens of ms old).
 static void build_readings(std::vector<ad::Reading> &out,
-                           float lemlib_heading_deg) {
+                           float lemlib_heading_deg, float extra_sd) {
   out.clear();
   // LemLib heading is clockwise from +Y; ad::Rotation is CCW math convention
   ad::Rotation rot = ad::Rotation::deg(-lemlib_heading_deg);
@@ -90,6 +125,7 @@ static void build_readings(std::vector<ad::Reading> &out,
     float d = raw * MM_TO_IN;
     float bound = d < 7.874015f ? 0.590551f : 0.05f * d;
     float sd = std::max(bound / 2.0f, 0.25f);
+    sd = std::sqrt(sd * sd + extra_sd * extra_sd);
 
     ad::Position rel =
         ad::Position{s.x_in, s.y_in, ad::deg(s.facing_deg)}.rotate(rot);
@@ -102,18 +138,26 @@ static void mcl_loop() {
   std::vector<ad::Reading> readings;
   readings.reserve(N_SENSORS);
 
-  while (true) {
-    auto pose = chassis.getPose();
+  float prev_theta = chassis.getPose().theta;
+  uint32_t prev_ms = pros::millis();
 
-    if (reset_pending.exchange(false)) {
+  while (true) {
+    bool did_reset = reset_pending.exchange(false);
+    auto pose = chassis.getPose(); // read AFTER the flag, so it includes the reset
+
+    uint32_t now = pros::millis();
+    float dt = std::max((now - prev_ms) * 0.001f, 0.01f);
+    prev_ms = now;
+
+    if (did_reset) {
       last_odom = {pose.x, pose.y};
-      mcl.init(pose.x + ORIGIN_X, pose.y + ORIGIN_Y, 1.0f);
+      mcl.init_box(reset_box.x0, reset_box.x1, reset_box.y0, reset_box.y1);
     }
+
     float nudge = nudge_y_request.exchange(0.0f);
     if (nudge != 0.0f) {
       chassis.setPose(pose.x, pose.y + nudge, pose.theta);
-      last_odom = {pose.x,
-                   pose.y + nudge}; // don't feed the jump into predict()
+      last_odom = {pose.x, pose.y + nudge}; // don't feed the jump into predict()
       pose = chassis.getPose();
     }
 
@@ -121,64 +165,100 @@ static void mcl_loop() {
     ad::Point d = cur - last_odom;
     last_odom = cur;
 
+    float speed = d.hypot() / dt; // in/s
+    float turn_dps = std::fabs(std::remainder(pose.theta - prev_theta, 360.0f)) / dt;
+    prev_theta = pose.theta;
+
     mcl.predict(d.x, d.y, 0.03f * d.hypot());
-    build_readings(readings, pose.theta);
-    mcl.update(readings);
 
-    ad::Point est = mcl.estimate();
-    est = {est.x - ORIGIN_X, est.y - ORIGIN_Y};
+    // Skip sensor updates while spinning fast: the rays swing and readings lag.
+    if (turn_dps < MAX_TURN_DPS) {
+      build_readings(readings, pose.theta, LAG_S * speed);
+      mcl.update(readings);
+    }
 
-    bool stationary = d.hypot() < 0.05f;
-    if (stationary) {
-      static int n = 0;
-      bool snap = snapshot_request.exchange(false);
-      if (snap || ++n % 4 == 0) {
-        float sx, sy;
-        mcl.spread_xy(sx, sy);
-        printf("%s odom %.2f,%.2f th %.1f | mcl %.2f,%.2f | sx %.2f sy %.2f "
-               "neff %.0f | apply %d |",
-               snap ? "SNAP" : "log", pose.x, pose.y, pose.theta, est.x, est.y,
-               sx, sy, mcl.n_eff(), (int)mcl_apply_enabled.load());
-        for (int i = 0; i < N_SENSORS; ++i)
-          printf(" %s=%.2f", dist_sensors[i].name,
-                 dist_sensors[i].dev->get() * MM_TO_IN);
-        printf("\n");
+    ad::Point est = mcl.estimate(); // already in the LemLib (field) frame
+
+    // ---- continuous correction, still or moving ----
+    if (mcl_apply_enabled) {
+      bool moving = speed > 2.0f;
+      float gain = moving ? GAIN_MOVING : GAIN_STILL;
+      float max_step = moving ? MAX_STEP_MOVING : MAX_STEP_STILL;
+
+      float sx, sy;
+      mcl.spread_xy(sx, sy);
+
+      auto step = [&](float err, float spread) -> float {
+        float a = std::fabs(err);
+        if (spread > AXIS_SPREAD_GATE || a < CORR_DEADBAND || a > CORR_MAX_ERR)
+          return 0.0f;
+        return std::clamp(gain * err, -max_step, max_step);
+      };
+      float cx = step(est.x - pose.x, sx);
+      float cy = step(est.y - pose.y, sy);
+
+      if (cx != 0.0f || cy != 0.0f) {
+        // Re-read the pose: odometry kept moving while we computed. Applying
+        // the DELTA to the fresh pose avoids yanking the robot backwards.
+        auto p2 = chassis.getPose();
+        chassis.setPose(p2.x + cx, p2.y + cy, p2.theta);
+        // Particles have only been advanced to `cur`, so the next predict
+        // must see (new odom - cur - correction) = real motion since cur.
+        last_odom = {cur.x + cx, cur.y + cy};
       }
     }
+
     static int n = 0;
     bool snap = snapshot_request.exchange(false);
     if (snap || ++n % 4 == 0) {
       float sx, sy;
       mcl.spread_xy(sx, sy);
+      printf("%s odom %.2f,%.2f th %.1f | mcl %.2f,%.2f | sx %.2f sy %.2f "
+             "neff %.0f | apply %d |",
+             snap ? "SNAP" : "log", pose.x, pose.y, pose.theta, est.x, est.y,
+             sx, sy, mcl.n_eff(), (int)mcl_apply_enabled.load());
+      for (int i = 0; i < N_SENSORS; ++i)
+        printf(" %s=%.2f", dist_sensors[i].name,
+               dist_sensors[i].dev->get() * MM_TO_IN);
+      printf("\n");
+
       pros::lcd::print(0, "odom %.1f %.1f th %.0f", pose.x, pose.y, pose.theta);
       pros::lcd::print(1, "mcl  %.1f %.1f", est.x, est.y);
       pros::lcd::print(2, "sx %.2f sy %.2f", sx, sy);
       pros::lcd::print(3, "neff %.0f apply %d", mcl.n_eff(),
                        (int)mcl_apply_enabled.load());
-      for (int i = 0; i < N_SENSORS && i < 3; ++i)
-        pros::lcd::print(4 + i, "%s %.2f in", dist_sensors[i].name,
-                         dist_sensors[i].dev->get() * MM_TO_IN);
-      // line 7 is kept free for wall_reset messages
+      pros::lcd::print(4, "%s %.1f  %s %.1f", dist_sensors[0].name,
+                       dist_sensors[0].dev->get() * MM_TO_IN,
+                       dist_sensors[1].name,
+                       dist_sensors[1].dev->get() * MM_TO_IN);
+      pros::lcd::print(5, "%s %.1f  %s %.1f", dist_sensors[2].name,
+                       dist_sensors[2].dev->get() * MM_TO_IN,
+                       dist_sensors[3].name,
+                       dist_sensors[3].dev->get() * MM_TO_IN);
+      // line 7 is used by global_localize()
     }
+
     mcl.resample_if_needed();
-    pros::delay(50); // sensors only update ~20 Hz; faster just re-counts the
-                     // same reading
+    pros::delay(50); // sensors update ~20 Hz; faster re-counts the same reading
   }
 }
 
 void initialize() {
   chassis.calibrate(true);
+  pros::lcd::initialize(); // before anything prints to the LCD
+
   chassis.setPose(START_X, START_Y, START_THETA);
-  mcl.init(START_X + ORIGIN_X, START_Y + ORIGIN_Y, 2.0f);
+  mcl.init_box(START_X - 3, START_X + 3, START_Y - 3, START_Y + 3);
   last_odom = {START_X, START_Y};
 
-  mcl_task = new pros::Task([] { mcl_loop(); });
+  global_localize(); // seeds x/y from the walls if the robot is already placed
 
-  // lvgl_init();
-  // screen_init();
-  pros::lcd::initialize();
+  mcl_task = new pros::Task([] { mcl_loop(); });
 }
 
+// =====================================================================
+//  WALL RESET / GLOBAL LOCALIZE
+// =====================================================================
 static int median_mm(pros::Distance &d, int n = 7) {
   int v[16], k = 0;
   for (int i = 0; i < n && i < 16; ++i) {
@@ -193,9 +273,102 @@ static int median_mm(pros::Distance &d, int n = 7) {
   return v[k / 2];
 }
 
-// Reset position from a wall using any sensors in the table, e.g.
-//   wall_reset({BACK_L, BACK_R});   // back wall, two sensors averaged
-//   wall_reset({SIDE});             // side wall, one sensor
+// Sample every sensor together (~150 ms total), median per sensor; -1 = no
+// valid data
+static void sample_all(int *out, int n = 5) {
+  int v[N_SENSORS][8], k[N_SENSORS] = {};
+  for (int i = 0; i < n && i < 8; ++i) {
+    for (int s = 0; s < N_SENSORS; ++s) {
+      int32_t x = dist_sensors[s].dev->get();
+      if (valid_mm(x))
+        v[s][k[s]++] = x;
+    }
+    pros::delay(30);
+  }
+  for (int s = 0; s < N_SENSORS; ++s) {
+    if (k[s] < n / 2 + 1) {
+      out[s] = -1;
+      continue;
+    }
+    std::sort(v[s], v[s] + k[s]);
+    out[s] = v[s][k[s] / 2];
+  }
+}
+
+// Sets x and/or y from the perimeter walls using every sensor that points
+// roughly at one (and reads under 2 m). Robot must be still, heading correct.
+// Nearer walls are weighted more, since the sensor error grows with distance.
+// Returns bit0 = x found, bit1 = y found. An axis no sensor can see keeps its
+// old value.
+int global_localize() {
+  constexpr float MAX_TILT_DEG = 10.0f, MIN_DISAGREE_IN = 1.5f;
+  auto p = chassis.getPose();
+  ad::Rotation rot = ad::Rotation::deg(-p.theta);
+
+  int raw[N_SENSORS];
+  sample_all(raw);
+
+  float sumw[2] = {0, 0}, sume[2] = {0, 0};
+  float lo[2] = {1e9f, 1e9f}, hi[2] = {-1e9f, -1e9f}, maxd[2] = {0, 0};
+  int cnt[2] = {0, 0};
+
+  for (int id = 0; id < N_SENSORS; ++id) {
+    if (raw[id] < 0)
+      continue;
+    const DistSensor &s = dist_sensors[id];
+
+    ad::Rotation face = ad::deg(s.facing_deg);
+    ad::Point u = ad::Point{face.cos(), face.sin()}.rotate(rot);
+    int a = std::fabs(u.x) > std::fabs(u.y) ? 0 : 1;
+    float along = a == 0 ? u.x : u.y;
+    float across = a == 0 ? u.y : u.x;
+    float sg = along > 0 ? 1.0f : -1.0f;
+    if (std::atan2(std::fabs(across), std::fabs(along)) * 180.0f / M_PI >
+        MAX_TILT_DEG)
+      continue;
+
+    float dist_in = raw[id] * MM_TO_IN;
+    float wall = sg > 0 ? FIELD_MAX : FIELD_MIN;
+    float sensor_pos = wall - sg * dist_in * std::fabs(along);
+    ad::Point off = ad::Point{s.x_in, s.y_in}.rotate(rot);
+    float e = sensor_pos - (a == 0 ? off.x : off.y);
+
+    float w = 1.0f / std::max(dist_in * dist_in, 16.0f);
+    sumw[a] += w;
+    sume[a] += w * e;
+    cnt[a]++;
+    lo[a] = std::min(lo[a], e);
+    hi[a] = std::max(hi[a], e);
+    maxd[a] = std::max(maxd[a], dist_in);
+  }
+
+  int found = 0;
+  float nx = p.x, ny = p.y;
+  for (int a = 0; a < 2; ++a) {
+    if (cnt[a] == 0)
+      continue;
+    float tol = std::max(MIN_DISAGREE_IN, 0.08f * maxd[a]); // far walls are noisier
+    if (hi[a] - lo[a] > tol) {
+      printf("localize: %c sensors disagree by %.2f in\n", a ? 'y' : 'x',
+             hi[a] - lo[a]);
+      continue;
+    }
+    (a == 0 ? nx : ny) = sume[a] / sumw[a];
+    found |= 1 << a;
+  }
+
+  chassis.setPose(nx, ny, p.theta);
+  float mx = (found & 1) ? std::max(1.5f, 0.05f * maxd[0]) : 4.0f;
+  float my = (found & 2) ? std::max(1.5f, 0.05f * maxd[1]) : 4.0f;
+  request_particle_reset(nx - mx, nx + mx, ny - my, ny + my);
+  printf("localize: found=%d pose %.2f, %.2f\n", found, nx, ny);
+  pros::lcd::print(7, "loc %d %.1f %.1f", found, nx, ny);
+  return found;
+}
+
+// Reset position from a wall using specific sensors from the table, e.g.
+//   wall_reset({FRONT_L, FRONT_R});  // front wall, two sensors averaged
+//   wall_reset({LEFT});              // left wall, one sensor
 // All listed sensors must face the same wall. The robot must be stationary and
 // roughly square to that wall (within 10 deg by IMU heading). It sets only the
 // axis the wall constrains (y for a front/back wall, x for a side wall).
@@ -230,6 +403,7 @@ bool wall_reset(std::initializer_list<int> ids) {
     if (tilt_deg > MAX_TILT_DEG) {
       printf("wall_reset: %s is %.1f deg off the wall normal\n", s.name,
              tilt_deg);
+      pros::lcd::print(7, "reject: tilt %.0f", tilt_deg);
       return false;
     }
     if (n == 0) {
@@ -237,12 +411,14 @@ bool wall_reset(std::initializer_list<int> ids) {
       sgn = sg;
     } else if (a != axis || sg != sgn) {
       printf("wall_reset: sensors don't face the same wall\n");
+      pros::lcd::print(7, "reject: diff walls");
       return false;
     }
 
     int raw = median_mm(*s.dev);
     if (raw < 0) {
       printf("wall_reset: %s has no valid reading\n", s.name);
+      pros::lcd::print(7, "reject: no read");
       return false;
     }
 
@@ -265,22 +441,27 @@ bool wall_reset(std::initializer_list<int> ids) {
   }
   if (hi - lo > MAX_DISAGREE_IN) {
     printf("wall_reset: sensors disagree by %.2f in, rejecting\n", hi - lo);
+    pros::lcd::print(7, "reject: disagree %.1f", hi - lo);
     return false;
   }
 
   float field_pos = sum / n;
-  if (axis == 0) {
-    float x = field_pos - ORIGIN_X;
-    chassis.setPose(x, p.y, p.theta);
-    printf("wall_reset: x=%.2f (spread %.2f)\n", x, hi - lo);
-  } else {
-    float y = field_pos - ORIGIN_Y;
-    chassis.setPose(p.x, y, p.theta);
-    printf("wall_reset: y=%.2f (spread %.2f)\n", y, hi - lo);
-  }
-  reset_pending = true;
+  float nx = p.x, ny = p.y;
+  if (axis == 0)
+    nx = field_pos;
+  else
+    ny = field_pos;
+  chassis.setPose(nx, ny, p.theta);
+  printf("wall_reset: %c=%.2f (spread %.2f)\n", axis == 0 ? 'x' : 'y',
+         field_pos, hi - lo);
+  pros::lcd::print(7, "reset %c=%.2f", axis == 0 ? 'x' : 'y', field_pos);
+  request_particle_reset(nx - 1.5f, nx + 1.5f, ny - 1.5f, ny + 1.5f);
   return true;
 }
+
+// =====================================================================
+//  COMPETITION HOOKS
+// =====================================================================
 void disabled() {}
 
 void competition_initialize() {}
@@ -310,16 +491,19 @@ void test_drive_out_and_back() {
   snapshot_request = true;
 }
 
-static void mcl_correct(int ms = 400) {
-  mcl_apply_enabled = true;
-  pros::delay(ms);           // ~8 loop iterations at 50 ms
-  mcl_apply_enabled = false; // off again before any motion starts
-}
 void autonomous() {
-  mcl_apply_enabled = false; // known state, in case opcontrol left it on
+  mcl_apply_enabled = true;
 
-  // Red Right: back into the wall (unchanged)
-  chassis.moveToPoint(0, -5, 650, {.forwards = false, .minSpeed = 85});
+  chassis.setPose(START_X, START_Y, START_THETA);
+  pros::delay(100);
+  global_localize();
+  pros::delay(300);
+
+  shitter.move(-90);
+  rotate.move_absolute(720, 200);
+
+  chassis.moveToPoint(START_X, START_Y - 5, 650,
+                      {.forwards = false, .minSpeed = 85});
   chassis.waitUntil(4);
   chassis.cancelAllMotions();
   chassis.arcade(105, 0);
@@ -334,22 +518,10 @@ void autonomous() {
   chassis.cancelAllMotions();
   pros::delay(200);
 
-  // Re-localize on the wall, retry once if it was rejected
-  if (!wall_reset({BACK_L, BACK_R})) {
-    pros::delay(100);
-    wall_reset({BACK_L, BACK_R});
-  }
-  mcl_correct(400); // fixes x too, once you add a front/side sensor
-
-  shitter.move(-90);
-  rotate.move_absolute(720, 200);
-  chassis.moveToPose(26, -21, -90, 2500,
-                     {.forwards = false, .horizontalDrift = 4, .lead = 0.5});
+  chassis.moveToPoint(40, 20, 10000, {.forwards = false});
   chassis.waitUntilDone();
-  delay(150);
 
-  // mcl_correct(400);         // add this before any further motion that needs
-  // accuracy
+  delay(150);
   shitter.move(100);
 }
 
@@ -363,14 +535,19 @@ void opcontrol() {
   rotate.brake();
 
   while (true) {
+    bool still = std::abs(userInput.get_analog(ANALOG_LEFT_Y)) < 5 &&
+                 std::abs(userInput.get_analog(ANALOG_RIGHT_X)) < 5;
 
-    // A: wall reset (robot must be still)
-    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_A) &&
-        std::abs(userInput.get_analog(ANALOG_LEFT_Y)) < 5 &&
-        std::abs(userInput.get_analog(ANALOG_RIGHT_X)) < 5) {
-      wall_reset({BACK_L, BACK_R});
+    // A: wall reset on the front sensors (robot must be still)
+    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_A) && still) {
+      wall_reset({FRONT_L, FRONT_R});
     }
-    // B: toggle MCL correction
+    // UP: full localize from every sensor that sees a wall (robot must be still)
+    if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_UP) &&
+        still) {
+      global_localize();
+    }
+    // B: toggle continuous MCL correction
     if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_B)) {
       mcl_apply_enabled = !mcl_apply_enabled;
       printf("MCL apply: %d\n", (int)mcl_apply_enabled.load());
@@ -379,10 +556,11 @@ void opcontrol() {
     if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)) {
       snapshot_request = true;
     }
-    // Y: nudge odometry 3 in off (correction test)
+    // Y: nudge pose 3 in off (correction test)
     if (userInput.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_Y)) {
       nudge_y_request = 3.0f;
     }
+
     chassis.arcade(userInput.get_analog(ANALOG_LEFT_Y),
                    userInput.get_analog(ANALOG_RIGHT_X), false, 0.40);
 

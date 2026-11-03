@@ -25,7 +25,7 @@ MotorGroup aright(rightDTPorts, MotorGearset::blue, v5::MotorUnits::degrees);
 
 Motor intake(4);
 Motor rotate(8);
-Motor shitter(6);
+Motor shitter(0);
 
 MotorGroup cascade({-9, 1});
 
@@ -39,6 +39,8 @@ IMU inertial1(16);
 
 Distance left_D(7);
 Distance right_D(14);
+Distance side_left_D(6);
+Distance side_right_D(15);
 
 lemlib::TrackingWheel leftVert(&vertRotation, lemlib::Omniwheel::NEW_2, 0.0, 1);
 

@@ -366,6 +366,15 @@ template <size_t N> struct MCL {
     }
   }
 
+  // Uniform scatter inside a box (field frame), clamped to the field
+  void init_box(float x0, float x1, float y0, float y1) {
+    for (size_t i = 0; i < N; ++i) {
+      particle_x[i] = std::clamp(rng.range_f32(x0, x1), FIELD_MIN, FIELD_MAX);
+      particle_y[i] = std::clamp(rng.range_f32(y0, y1), FIELD_MIN, FIELD_MAX);
+      particle_weights[i] = 1.0f / N;
+    }
+  }
+
   void predict(float dx, float dy, float std_dev) {
     std_dev = std::max(std_dev, min_predict_std); // noise floor
     for (size_t i = 0; i < N; ++i) {

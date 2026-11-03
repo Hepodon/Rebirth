@@ -24,6 +24,8 @@ extern pros::MotorGroup cascade;
 
 extern pros::Distance left_D;
 extern pros::Distance right_D;
+extern pros::Distance side_left_D;
+extern pros::Distance side_right_D;
 
 extern pros::Rotation vertRotation;
 
